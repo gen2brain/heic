@@ -28,7 +28,7 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 
 	var e heifError
 
-	e = heifContextReadFromMemory(ctx, data)
+	e = heifContextReadFromMemoryWithoutCopy(ctx, data)
 	if e.Code != 0 {
 		return nil, cfg, ErrDecode
 	}
@@ -42,14 +42,20 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	}
 	defer heifImageHandleRelease(handle)
 
-	isPremultipliedAlpha := heifImageHandleIsPremultipliedAlpha(handle)
-
 	cfg.Width = heifImageHandleGetWidth(handle)
 	cfg.Height = heifImageHandleGetHeight(handle)
-
 	cfg.ColorModel = color.NRGBAModel
-	if isPremultipliedAlpha {
-		cfg.ColorModel = color.RGBAModel
+
+	img := &heifImage{}
+	e = heifImageCreate(cfg.Width, cfg.Height, heifColorspaceRgb, heifChromaInterleavedRgba, &img)
+	if e.Code != 0 {
+		return nil, cfg, ErrDecode
+	}
+	defer heifImageRelease(img)
+
+	e = heifImageAddPlane(img, heifChannelInterleaved, cfg.Width, cfg.Height, 4)
+	if e.Code != 0 {
+		return nil, cfg, ErrDecode
 	}
 
 	if configOnly {
@@ -60,29 +66,29 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	options.ConvertHdrTo8bit = 1
 	defer heifDecodingOptionsFree(options)
 
-	img := &heifImage{}
 	e = heifDecodeImage(handle, &img, heifColorspaceRgb, heifChromaInterleavedRgba, options)
 	if e.Code != 0 {
 		return nil, cfg, ErrDecode
 	}
-	defer heifImageRelease(img)
 
-	rgbaData := heifImageGetPlaneReadonly(img, heifChannelInterleaved, nil)
-	size := cfg.Width * cfg.Height * 4
+	var stride int
+	rgbaData := heifImageGetPlaneReadonly(img, heifChannelInterleaved, &stride)
+	size := cfg.Height * stride
 
 	runtime.KeepAlive(data)
 
-	if isPremultipliedAlpha {
-		rgba := image.NewRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
-		copy(rgba.Pix, unsafe.Slice(rgbaData, size))
-
-		return rgba, cfg, nil
-	} else {
-		rgba := image.NewNRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
-		copy(rgba.Pix, unsafe.Slice(rgbaData, size))
-
-		return rgba, cfg, nil
+	rgba := &image.NRGBA{
+		Pix:    make([]uint8, size),
+		Stride: stride,
+		Rect: image.Rectangle{
+			Min: image.Point{X: 0, Y: 0},
+			Max: image.Point{X: cfg.Width, Y: cfg.Height},
+		},
 	}
+
+	copy(rgba.Pix, unsafe.Slice(rgbaData, size))
+
+	return rgba, cfg, nil
 }
 
 func init() {
@@ -98,7 +104,7 @@ func init() {
 	purego.RegisterLibFunc(&_heifCheckFiletype, libheif, "heif_check_filetype")
 	purego.RegisterLibFunc(&_heifContextAlloc, libheif, "heif_context_alloc")
 	purego.RegisterLibFunc(&_heifContextFree, libheif, "heif_context_free")
-	purego.RegisterLibFunc(&_heifContextReadFromMemory, libheif, "heif_context_read_from_memory")
+	purego.RegisterLibFunc(&_heifContextReadFromMemoryWithoutCopy, libheif, "heif_context_read_from_memory_without_copy")
 	purego.RegisterLibFunc(&_heifContextSetMaxDecodingThreads, libheif, "heif_context_set_max_decoding_threads")
 	purego.RegisterLibFunc(&_heifContextGetPrimaryImageHandle, libheif, "heif_context_get_primary_image_handle")
 	purego.RegisterLibFunc(&_heifImageHandleGetWidth, libheif, "heif_image_handle_get_width")
@@ -107,6 +113,8 @@ func init() {
 	purego.RegisterLibFunc(&_heifImageHandleRelease, libheif, "heif_image_handle_release")
 	purego.RegisterLibFunc(&_heifDecodingOptionsAlloc, libheif, "heif_decoding_options_alloc")
 	purego.RegisterLibFunc(&_heifDecodingOptionsFree, libheif, "heif_decoding_options_free")
+	purego.RegisterLibFunc(&_heifImageCreate, libheif, "heif_image_create")
+	purego.RegisterLibFunc(&_heifImageAddPlane, libheif, "heif_image_add_plane")
 	purego.RegisterLibFunc(&_heifDecodeImage, libheif, "heif_decode_image")
 	purego.RegisterLibFunc(&_heifImageGetPlaneReadonly, libheif, "heif_image_get_plane_readonly")
 	purego.RegisterLibFunc(&_heifImageRelease, libheif, "heif_image_release")
@@ -125,21 +133,23 @@ var (
 )
 
 var (
-	_heifCheckFiletype                   func(*uint8, uint64) int
-	_heifContextAlloc                    func() *heifContext
-	_heifContextFree                     func(*heifContext)
-	_heifContextReadFromMemory           func(*heifContext, *uint8, uint64, *byte) uintptr
-	_heifContextSetMaxDecodingThreads    func(*heifContext, int)
-	_heifContextGetPrimaryImageHandle    func(*heifContext, **heifImageHandle) uintptr
-	_heifImageHandleGetWidth             func(*heifImageHandle) int
-	_heifImageHandleGetHeight            func(*heifImageHandle) int
-	_heifImageHandleIsPremultipliedAlpha func(*heifImageHandle) int
-	_heifImageHandleRelease              func(*heifImageHandle)
-	_heifDecodingOptionsAlloc            func() *heifDecodingOptions
-	_heifDecodingOptionsFree             func(*heifDecodingOptions)
-	_heifDecodeImage                     func(*heifImageHandle, **heifImage, int, int, *heifDecodingOptions) uintptr
-	_heifImageGetPlaneReadonly           func(*heifImage, uint32, *int) *uint8
-	_heifImageRelease                    func(*heifImage)
+	_heifCheckFiletype                    func(*uint8, uint64) int
+	_heifContextAlloc                     func() *heifContext
+	_heifContextFree                      func(*heifContext)
+	_heifContextReadFromMemoryWithoutCopy func(*heifContext, *uint8, uint64, *byte) uintptr
+	_heifContextSetMaxDecodingThreads     func(*heifContext, int)
+	_heifContextGetPrimaryImageHandle     func(*heifContext, **heifImageHandle) uintptr
+	_heifImageHandleGetWidth              func(*heifImageHandle) int
+	_heifImageHandleGetHeight             func(*heifImageHandle) int
+	_heifImageHandleIsPremultipliedAlpha  func(*heifImageHandle) int
+	_heifImageHandleRelease               func(*heifImageHandle)
+	_heifDecodingOptionsAlloc             func() *heifDecodingOptions
+	_heifDecodingOptionsFree              func(*heifDecodingOptions)
+	_heifImageCreate                      func(int, int, int, int, **heifImage) uintptr
+	_heifImageAddPlane                    func(*heifImage, int, int, int, int) uintptr
+	_heifDecodeImage                      func(*heifImageHandle, **heifImage, int, int, *heifDecodingOptions) uintptr
+	_heifImageGetPlaneReadonly            func(*heifImage, int, *int) *uint8
+	_heifImageRelease                     func(*heifImage)
 )
 
 func heifCheckFiletype(data []byte) int {
@@ -154,8 +164,8 @@ func heifContextFree(ctx *heifContext) {
 	_heifContextFree(ctx)
 }
 
-func heifContextReadFromMemory(ctx *heifContext, data []byte) heifError {
-	ret := _heifContextReadFromMemory(ctx, &data[0], uint64(len(data)), nil)
+func heifContextReadFromMemoryWithoutCopy(ctx *heifContext, data []byte) heifError {
+	ret := _heifContextReadFromMemoryWithoutCopy(ctx, &data[0], uint64(len(data)), nil)
 
 	return *(*heifError)(unsafe.Pointer(&ret))
 }
@@ -196,6 +206,18 @@ func heifDecodingOptionsFree(options *heifDecodingOptions) {
 	_heifDecodingOptionsFree(options)
 }
 
+func heifImageCreate(width, height, colorspace, chroma int, img **heifImage) heifError {
+	ret := _heifImageCreate(width, height, colorspace, chroma, img)
+
+	return *(*heifError)(unsafe.Pointer(&ret))
+}
+
+func heifImageAddPlane(img *heifImage, channel, width, height, bitDepth int) heifError {
+	ret := _heifImageAddPlane(img, channel, width, height, bitDepth)
+
+	return *(*heifError)(unsafe.Pointer(&ret))
+}
+
 func heifDecodeImage(handle *heifImageHandle, img **heifImage, colorspace int, chroma int, options *heifDecodingOptions) heifError {
 	ret := _heifDecodeImage(handle, img, colorspace, chroma, options)
 
@@ -203,7 +225,7 @@ func heifDecodeImage(handle *heifImageHandle, img **heifImage, colorspace int, c
 }
 
 func heifImageGetPlaneReadonly(img *heifImage, channel int, stride *int) *uint8 {
-	return _heifImageGetPlaneReadonly(img, uint32(channel), stride)
+	return _heifImageGetPlaneReadonly(img, channel, stride)
 }
 
 func heifImageRelease(img *heifImage) {

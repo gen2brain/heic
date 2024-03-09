@@ -65,10 +65,10 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	if err != nil {
 		return nil, cfg, fmt.Errorf("alloc: %w", err)
 	}
-	premultipliedPtr := res[0]
-	defer _free.Call(ctx, premultipliedPtr)
+	stridePtr := res[0]
+	defer _free.Call(ctx, stridePtr)
 
-	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 1, widthPtr, heightPtr, premultipliedPtr, 0)
+	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 1, widthPtr, heightPtr, stridePtr, 0)
 	if err != nil {
 		return nil, cfg, fmt.Errorf("decode: %w", err)
 	}
@@ -87,24 +87,20 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 		return nil, cfg, ErrMemRead
 	}
 
-	premultiplied, ok := mod.Memory().ReadUint32Le(uint32(premultipliedPtr))
+	stride, ok := mod.Memory().ReadUint32Le(uint32(stridePtr))
 	if !ok {
 		return nil, cfg, ErrMemRead
 	}
 
 	cfg.Width = int(width)
 	cfg.Height = int(height)
-
 	cfg.ColorModel = color.NRGBAModel
-	if premultiplied == 1 {
-		cfg.ColorModel = color.RGBAModel
-	}
 
 	if configOnly {
 		return nil, cfg, nil
 	}
 
-	size := cfg.Width * cfg.Height * 4
+	size := cfg.Height * int(stride)
 
 	res, err = _alloc.Call(ctx, uint64(size))
 	if err != nil {
@@ -113,7 +109,7 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	outPtr := res[0]
 	defer _free.Call(ctx, outPtr)
 
-	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 0, widthPtr, heightPtr, premultipliedPtr, outPtr)
+	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 0, widthPtr, heightPtr, stridePtr, outPtr)
 	if err != nil {
 		return nil, cfg, fmt.Errorf("decode: %w", err)
 	}
@@ -127,15 +123,16 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 		return nil, cfg, ErrMemRead
 	}
 
-	if premultiplied == 1 {
-		img := image.NewRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
-		img.Pix = out
-		return img, cfg, nil
-	} else {
-		img := image.NewNRGBA(image.Rect(0, 0, cfg.Width, cfg.Height))
-		img.Pix = out
-		return img, cfg, nil
+	img := &image.NRGBA{
+		Pix:    out,
+		Stride: int(stride),
+		Rect: image.Rectangle{
+			Min: image.Point{X: 0, Y: 0},
+			Max: image.Point{X: cfg.Width, Y: cfg.Height},
+		},
 	}
+
+	return img, cfg, nil
 }
 
 var (

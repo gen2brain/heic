@@ -19,7 +19,7 @@ void deallocate(void *ptr) {
 }
 
 __attribute__((export_name("decode")))
-int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width, uint32_t *height, uint32_t *premultiplied, uint8_t *rgb_out) {
+int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width, uint32_t *height, uint32_t *stride, uint8_t *rgb_out) {
     enum heif_filetype_result filetype_check = heif_check_filetype(heic_in, heic_in_size);
     if(filetype_check != heif_filetype_yes_supported) {
         return 0;
@@ -45,7 +45,23 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
 
     *width = (uint32_t)heif_image_handle_get_width(handle);
     *height = (uint32_t)heif_image_handle_get_height(handle);
-    *premultiplied = (uint32_t)heif_image_handle_is_premultiplied_alpha(handle);
+
+    struct heif_image *img;
+    err = heif_image_create(*width, *height, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, &img);
+    if(err.code != heif_error_Ok) {
+        heif_context_free(context);
+        heif_image_handle_release(handle);
+        return 0;
+    }
+
+    err = heif_image_add_plane(img, heif_channel_interleaved, *width, *height, 4);
+    if(err.code != heif_error_Ok) {
+        heif_context_free(context);
+        heif_image_handle_release(handle);
+        return 0;
+    }
+
+    heif_image_get_plane_readonly(img, heif_channel_interleaved, (int *)stride);
 
     if(config_only) {
         heif_context_free(context);
@@ -56,7 +72,6 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
     struct heif_decoding_options* options = heif_decoding_options_alloc();
     options->convert_hdr_to_8bit = 1;
 
-    struct heif_image *img;
     err = heif_decode_image(handle, &img, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, options);
     if(err.code != heif_error_Ok) {
         heif_context_free(context);
@@ -64,7 +79,7 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
         return 0;
     }
 
-    uint8_t *image = heif_image_get_plane_readonly(img, heif_channel_interleaved, NULL);
+    const uint8_t *image = heif_image_get_plane_readonly(img, heif_channel_interleaved, NULL);
 
     int buf_size = *width * *height * 4;
     memcpy(rgb_out, image, buf_size);
