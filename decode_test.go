@@ -12,8 +12,8 @@ import (
 //go:embed testdata/test8.heic
 var testHeic8 []byte
 
-//go:embed testdata/test16.heic
-var testHeic16 []byte
+//go:embed testdata/test12.heic
+var testHeic12 []byte
 
 func TestDecode(t *testing.T) {
 	img, err := Decode(bytes.NewReader(testHeic8))
@@ -27,8 +27,8 @@ func TestDecode(t *testing.T) {
 	}
 }
 
-func TestDecode16(t *testing.T) {
-	img, err := Decode(bytes.NewReader(testHeic16))
+func TestDecode12(t *testing.T) {
+	img, err := Decode(bytes.NewReader(testHeic12))
 	if err != nil {
 		t.Fatal(err)
 	}
