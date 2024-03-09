@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -20,34 +19,7 @@ import (
 //go:embed lib/heif.wasm
 var heifWasm []byte
 
-// Errors .
-var (
-	ErrMemRead  = errors.New("heic: mem read failed")
-	ErrMemWrite = errors.New("heic: mem write failed")
-	ErrDecode   = errors.New("heic: decode failed")
-)
-
-// Decode reads a AVIF image from r and returns it as an image.Image.
-func Decode(r io.Reader) (image.Image, error) {
-	img, _, err := decode(r, false, false)
-	if err != nil {
-		return nil, err
-	}
-
-	return img, nil
-}
-
-// DecodeConfig returns the color model and dimensions of a AVIF image without decoding the entire image.
-func DecodeConfig(r io.Reader) (image.Config, error) {
-	_, cfg, err := decode(r, true, false)
-	if err != nil {
-		return image.Config{}, err
-	}
-
-	return cfg, nil
-}
-
-func decode(r io.Reader, configOnly, decodeAll bool) (image.Image, image.Config, error) {
+func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	if !initialized.Load() {
 		initialize()
 	}

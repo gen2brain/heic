@@ -1,4 +1,4 @@
-package heic_test
+package heic
 
 import (
 	"bytes"
@@ -7,8 +7,6 @@ import (
 	"image/jpeg"
 	"io"
 	"testing"
-
-	"github.com/gen2brain/heic"
 )
 
 //go:embed testdata/test8.heic
@@ -18,7 +16,7 @@ var testHeic8 []byte
 var testHeic16 []byte
 
 func TestDecode(t *testing.T) {
-	img, err := heic.Decode(bytes.NewReader(testHeic8))
+	img, err := Decode(bytes.NewReader(testHeic8))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +28,7 @@ func TestDecode(t *testing.T) {
 }
 
 func TestDecode16(t *testing.T) {
-	img, err := heic.Decode(bytes.NewReader(testHeic16))
+	img, err := Decode(bytes.NewReader(testHeic16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +52,7 @@ func TestImageDecode(t *testing.T) {
 }
 
 func TestDecodeConfig(t *testing.T) {
-	cfg, err := heic.DecodeConfig(bytes.NewReader(testHeic8))
+	cfg, err := DecodeConfig(bytes.NewReader(testHeic8))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,38 +66,46 @@ func TestDecodeConfig(t *testing.T) {
 	}
 }
 
-func BenchmarkDecodeJPEG(b *testing.B) {
-	img, _, err := image.Decode(bytes.NewReader(testHeic8))
-	if err != nil {
-		b.Error(err)
-	}
-
-	var testJpeg bytes.Buffer
-	err = jpeg.Encode(&testJpeg, img, nil)
-	if err != nil {
-		b.Error(err)
-	}
-
-	for i := 0; i < b.N; i++ {
-		_, _, err := image.Decode(bytes.NewReader(testJpeg.Bytes()))
-		if err != nil {
-			b.Error(err)
-		}
-	}
-}
-
 func BenchmarkDecodeHEIC(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		_, _, err := image.Decode(bytes.NewReader(testHeic8))
+		_, _, err := decode(bytes.NewReader(testHeic8), false)
 		if err != nil {
 			b.Error(err)
 		}
 	}
 }
 
-func BenchmarkDecodeConfig(b *testing.B) {
+func BenchmarkDecodeHEICDynamic(b *testing.B) {
+	if !dynamic {
+		b.Errorf("dynamic/shared library not installed")
+		return
+	}
+
 	for i := 0; i < b.N; i++ {
-		_, err := heic.DecodeConfig(bytes.NewReader(testHeic8))
+		_, _, err := decodeDynamic(bytes.NewReader(testHeic8), false)
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func BenchmarkDecodeConfigHEIC(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		_, _, err := decode(bytes.NewReader(testHeic8), true)
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func BenchmarkDecodeConfigHEICDynamic(b *testing.B) {
+	if !dynamic {
+		b.Errorf("dynamic/shared library not installed")
+		return
+	}
+
+	for i := 0; i < b.N; i++ {
+		_, _, err := decodeDynamic(bytes.NewReader(testHeic8), true)
 		if err != nil {
 			b.Error(err)
 		}
