@@ -54,7 +54,7 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
     }
 
     struct heif_decoding_options* options = heif_decoding_options_alloc();
-    options->convert_hdr_to_8bit = 1; 
+    options->convert_hdr_to_8bit = 1;
 
     struct heif_image *img;
     err = heif_decode_image(handle, &img, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, options);
@@ -64,10 +64,9 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
         return 0;
     }
 
-    int stride;
-    uint8_t *image = heif_image_get_plane(img, heif_channel_interleaved, &stride);
+    uint8_t *image = heif_image_get_plane_readonly(img, heif_channel_interleaved, NULL);
 
-    int buf_size = *height * stride;
+    int buf_size = *width * *height * 4;
     memcpy(rgb_out, image, buf_size);
 
     heif_decoding_options_free(options);
