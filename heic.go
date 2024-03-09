@@ -54,6 +54,11 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 	return cfg, nil
 }
 
+// Dynamic returns true when library is using the dynamic/shared library.
+func Dynamic() bool {
+	return dynamic
+}
+
 func init() {
 	image.RegisterFormat("heic", "????ftypheic", Decode, DecodeConfig)
 }

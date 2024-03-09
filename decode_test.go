@@ -76,7 +76,7 @@ func BenchmarkDecodeHEIC(b *testing.B) {
 }
 
 func BenchmarkDecodeHEICDynamic(b *testing.B) {
-	if !dynamic {
+	if !Dynamic() {
 		b.Errorf("dynamic/shared library not installed")
 		return
 	}
@@ -99,7 +99,7 @@ func BenchmarkDecodeConfigHEIC(b *testing.B) {
 }
 
 func BenchmarkDecodeConfigHEICDynamic(b *testing.B) {
-	if !dynamic {
+	if !Dynamic() {
 		b.Errorf("dynamic/shared library not installed")
 		return
 	}
