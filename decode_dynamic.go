@@ -46,6 +46,10 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	cfg.Height = heifImageHandleGetHeight(handle)
 	cfg.ColorModel = color.NRGBAModel
 
+	if configOnly {
+		return nil, cfg, nil
+	}
+
 	img := &heifImage{}
 	e = heifImageCreate(cfg.Width, cfg.Height, heifColorspaceRgb, heifChromaInterleavedRgba, &img)
 	if e.Code != 0 {
@@ -56,10 +60,6 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	e = heifImageAddPlane(img, heifChannelInterleaved, cfg.Width, cfg.Height, 4)
 	if e.Code != 0 {
 		return nil, cfg, ErrDecode
-	}
-
-	if configOnly {
-		return nil, cfg, nil
 	}
 
 	options := heifDecodingOptionsAlloc()
