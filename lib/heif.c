@@ -6,7 +6,7 @@
 void *allocate(size_t size);
 void deallocate(void *ptr);
 
-int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width, uint32_t *height, uint32_t *premultiplied, uint8_t *rgb_out);
+int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width, uint32_t *height, uint32_t *stride, uint8_t *rgb_out);
 
 __attribute__((export_name("allocate")))
 void *allocate(size_t size) {
@@ -81,7 +81,7 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
 
     const uint8_t *image = heif_image_get_plane_readonly(img, heif_channel_interleaved, NULL);
 
-    int buf_size = *width * *height * 4;
+    int buf_size = *height * *stride;
     memcpy(rgb_out, image, buf_size);
 
     heif_decoding_options_free(options);
