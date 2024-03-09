@@ -1,6 +1,7 @@
 package heic
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"io"
@@ -33,7 +34,9 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 		return nil, cfg, ErrDecode
 	}
 
-	heifContextSetMaxDecodingThreads(ctx, runtime.NumCPU())
+	if heifGetVersionNumberMajor() == 1 && heifGetVersionNumberMinor() >= 14 {
+		heifContextSetMaxDecodingThreads(ctx, runtime.NumCPU())
+	}
 
 	handle := &heifImageHandle{}
 	e = heifContextGetPrimaryImageHandle(ctx, &handle)
@@ -93,19 +96,28 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 
 func init() {
 	var err error
+	defer func() {
+		if r := recover(); r != nil {
+			dynamic = false
+			dynamicErr = fmt.Errorf("%v", r)
+		}
+	}()
 
 	libheif, err = loadLibrary()
 	if err == nil {
 		dynamic = true
 	} else {
+		dynamicErr = err
+
 		return
 	}
 
+	purego.RegisterLibFunc(&_heifGetVersionNumberMajor, libheif, "heif_get_version_number_major")
+	purego.RegisterLibFunc(&_heifGetVersionNumberMinor, libheif, "heif_get_version_number_minor")
 	purego.RegisterLibFunc(&_heifCheckFiletype, libheif, "heif_check_filetype")
 	purego.RegisterLibFunc(&_heifContextAlloc, libheif, "heif_context_alloc")
 	purego.RegisterLibFunc(&_heifContextFree, libheif, "heif_context_free")
 	purego.RegisterLibFunc(&_heifContextReadFromMemoryWithoutCopy, libheif, "heif_context_read_from_memory_without_copy")
-	purego.RegisterLibFunc(&_heifContextSetMaxDecodingThreads, libheif, "heif_context_set_max_decoding_threads")
 	purego.RegisterLibFunc(&_heifContextGetPrimaryImageHandle, libheif, "heif_context_get_primary_image_handle")
 	purego.RegisterLibFunc(&_heifImageHandleGetWidth, libheif, "heif_image_handle_get_width")
 	purego.RegisterLibFunc(&_heifImageHandleGetHeight, libheif, "heif_image_handle_get_height")
@@ -118,6 +130,10 @@ func init() {
 	purego.RegisterLibFunc(&_heifDecodeImage, libheif, "heif_decode_image")
 	purego.RegisterLibFunc(&_heifImageGetPlaneReadonly, libheif, "heif_image_get_plane_readonly")
 	purego.RegisterLibFunc(&_heifImageRelease, libheif, "heif_image_release")
+
+	if heifGetVersionNumberMajor() == 1 && heifGetVersionNumberMinor() >= 14 {
+		purego.RegisterLibFunc(&_heifContextSetMaxDecodingThreads, libheif, "heif_context_set_max_decoding_threads")
+	}
 }
 
 const (
@@ -128,11 +144,14 @@ const (
 )
 
 var (
-	libheif uintptr
-	dynamic bool
+	libheif    uintptr
+	dynamic    bool
+	dynamicErr error
 )
 
 var (
+	_heifGetVersionNumberMajor            func() uint32
+	_heifGetVersionNumberMinor            func() uint32
 	_heifCheckFiletype                    func(*uint8, uint64) int
 	_heifContextAlloc                     func() *heifContext
 	_heifContextFree                      func(*heifContext)
@@ -151,6 +170,14 @@ var (
 	_heifImageGetPlaneReadonly            func(*heifImage, int, *int) *uint8
 	_heifImageRelease                     func(*heifImage)
 )
+
+func heifGetVersionNumberMajor() uint32 {
+	return _heifGetVersionNumberMajor()
+}
+
+func heifGetVersionNumberMinor() uint32 {
+	return _heifGetVersionNumberMinor()
+}
 
 func heifCheckFiletype(data []byte) int {
 	return _heifCheckFiletype(&data[0], uint64(len(data)))
