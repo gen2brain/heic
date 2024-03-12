@@ -91,10 +91,9 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
     return 1;
 }
 
-void __cxa_allocate_exception() {
-    abort();
+int __cxa_allocate_exception(int a) {
+    return 0;
 }
 
-void __cxa_throw() {
-    abort();
+void __cxa_throw(int a, int b, int c) {
 }

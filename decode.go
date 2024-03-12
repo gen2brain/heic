@@ -2,6 +2,7 @@ package heic
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	_ "embed"
 	"fmt"
@@ -16,7 +17,7 @@ import (
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
-//go:embed lib/heif.wasm
+//go:embed lib/heif.wasm.gz
 var heifWasm []byte
 
 func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
@@ -153,7 +154,18 @@ func initialize() {
 	ctx := context.Background()
 	rt := wazero.NewRuntime(ctx)
 
-	compiled, err := rt.CompileModule(ctx, heifWasm)
+	r, err := gzip.NewReader(bytes.NewReader(heifWasm))
+	if err != nil {
+		panic(err)
+	}
+
+	var data bytes.Buffer
+	_, err = data.ReadFrom(r)
+	if err != nil {
+		panic(err)
+	}
+
+	compiled, err := rt.CompileModule(ctx, data.Bytes())
 	if err != nil {
 		panic(err)
 	}
