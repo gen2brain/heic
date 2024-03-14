@@ -19,13 +19,20 @@ all: heif.wasm
 
 $(LIBHEIF_SRC):
 	git clone -b $(LIBHEIF_VERSION) --depth 1 --recursive --jobs `nproc` https://github.com/strukturag/libheif
+	sed -i '/HeifFile::read_from_file/,+15d' $(LIBHEIF_SRC)/libheif/file.cc
+	sed -i '/heif_file_writer_write(/,+13d' $(LIBHEIF_SRC)/libheif/heif.cc
+	sed -i '/heif_file_writer_write/d' $(LIBHEIF_SRC)/libheif/heif.cc
+	sed -i '/de265_start_worker_threads/d' $(LIBHEIF_SRC)/libheif/plugins/decoder_libde265.cc
+	sed -i '195i return get_decoder_plugin_libde265();' $(LIBHEIF_SRC)/libheif/plugin_registry.cc
 	mkdir -p $(LIBHEIF_BUILD)
 	test -d $@
 
 $(LIBDE265_SRC):
 	git clone -b $(LIBDE265_VERSION) --depth 1 --recursive --jobs `nproc` https://github.com/strukturag/libde265
-	#sed -i '/^find_package(Threads/d' $(LIBDE265_SRC)/CMakeLists.txt
-	#sed -i '/^target_link_libraries/d' $(LIBDE265_SRC)/libde265/CMakeLists.txt
+	sed -i '/^find_package(Threads/d' $(LIBDE265_SRC)/CMakeLists.txt
+	sed -i '/^target_link_libraries/d' $(LIBDE265_SRC)/libde265/CMakeLists.txt
+	sed -i '/static std::mutex/,+4d' $(LIBDE265_SRC)/libde265/de265.cc
+	sed -i '/std::mutex/d' $(LIBDE265_SRC)/libde265/de265.cc
 	mkdir -p $(LIBDE265_BUILD)
 	test -d $@
 

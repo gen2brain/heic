@@ -54,7 +54,7 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
         return 0;
     }
 
-    err = heif_image_add_plane(img, heif_channel_interleaved, *width, *height, 4);
+    err = heif_image_add_plane(img, heif_channel_interleaved, *width, *height, 8);
     if(err.code != heif_error_Ok) {
         heif_context_free(context);
         heif_image_handle_release(handle);
@@ -96,4 +96,52 @@ int __cxa_allocate_exception(int a) {
 }
 
 void __cxa_throw(int a, int b, int c) {
+}
+
+int pthread_create(int a, int b, int c, int d) {
+    return 0;
+}
+
+int pthread_join(int a, int b) {
+    return 0;
+}
+
+int pthread_mutex_init(int a, int b) {
+    return 0;
+}
+
+int pthread_mutex_lock(int a) {
+    return 0;
+}
+
+int pthread_mutex_unlock(int a) {
+    return 0;
+}
+
+int pthread_mutex_destroy(int a) {
+    return 0;
+}
+
+int pthread_cond_init(int a, int b) {
+    return 0;
+}
+
+int pthread_cond_signal(int a) {
+    return 0;
+}
+
+int pthread_cond_wait(int a, int b) {
+    return 0;
+}
+
+int pthread_cond_broadcast(int a) {
+    return 0;
+}
+
+int pthread_cond_timedwait(int a, int b, int c) {
+    return 0;
+}
+
+int pthread_cond_destroy(int a) {
+    return 0;
 }
