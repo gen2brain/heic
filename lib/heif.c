@@ -3,22 +3,8 @@
 
 #include "libheif/heif.h"
 
-void *allocate(size_t size);
-void deallocate(void *ptr);
-
 int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width, uint32_t *height, uint32_t *stride, uint8_t *rgb_out);
 
-__attribute__((export_name("allocate")))
-void *allocate(size_t size) {
-    return malloc(size);
-}
-
-__attribute__((export_name("deallocate")))
-void deallocate(void *ptr) {
-    free(ptr);
-}
-
-__attribute__((export_name("decode")))
 int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width, uint32_t *height, uint32_t *stride, uint8_t *rgb_out) {
     enum heif_filetype_result filetype_check = heif_check_filetype(heic_in, heic_in_size);
     if(filetype_check != heif_filetype_yes_supported) {

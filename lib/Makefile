@@ -15,7 +15,7 @@ CMAKE_TOOLCHAIN_FILE=$(WASI_SDK_PATH)/share/cmake/wasi-sdk.cmake
 
 BIN := heif.wasm
 
-all: heif.wasm
+all: $(BIN)
 
 $(LIBHEIF_SRC):
 	git clone -b $(LIBHEIF_VERSION) --depth 1 --recursive --jobs `nproc` https://github.com/strukturag/libheif
@@ -89,6 +89,9 @@ $(BIN): $(LIBDE265_BUILD)/libde265/libde265.a $(LIBHEIF_BUILD)/libheif/libheif.a
 	$(CC) \
 		-O3 \
 		-Wl,--no-entry \
+		-Wl,--export=malloc \
+		-Wl,--export=free \
+		-Wl,--export=decode \
 		-mexec-model=reactor \
 		-mnontrapping-fptoint \
 		-I${LIBHEIF_SRC} \
