@@ -22,6 +22,7 @@ $(LIBHEIF_SRC):
 	sed -i '/HeifFile::read_from_file/,+15d' $(LIBHEIF_SRC)/libheif/file.cc
 	sed -i '/heif_file_writer_write(/,+13d' $(LIBHEIF_SRC)/libheif/heif.cc
 	sed -i '/heif_file_writer_write/d' $(LIBHEIF_SRC)/libheif/heif.cc
+	sed -i '/target_colorspace = heif_colorspace_RGB/d' $(LIBHEIF_SRC)/libheif/context.cc
 	sed -i '/de265_start_worker_threads/d' $(LIBHEIF_SRC)/libheif/plugins/decoder_libde265.cc
 	sed -i '195i return get_decoder_plugin_libde265();' $(LIBHEIF_SRC)/libheif/plugin_registry.cc
 	mkdir -p $(LIBHEIF_BUILD)
@@ -106,4 +107,4 @@ $(BIN): $(LIBDE265_BUILD)/libde265/libde265.a $(LIBHEIF_BUILD)/libheif/libheif.a
 .PHONY: clean
 
 clean:
-	#-rm -rf $(LIBHEIF_SRC) $(LIBDE265_SRC)
+	-rm -rf $(LIBHEIF_SRC) $(LIBDE265_SRC) $(BIN)

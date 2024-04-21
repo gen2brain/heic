@@ -1,4 +1,4 @@
-//go:build unix || darwin || windows
+//go:build (unix || darwin || windows) && !nodynamic
 
 package heic
 
@@ -14,11 +14,21 @@ import (
 )
 
 func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
+	var err error
 	var cfg image.Config
+	var data []byte
 
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, cfg, err
+	if configOnly {
+		data = make([]byte, heifMaxHeaderSize)
+		_, err = r.Read(data)
+		if err != nil {
+			return nil, cfg, fmt.Errorf("read: %w", err)
+		}
+	} else {
+		data, err = io.ReadAll(r)
+		if err != nil {
+			return nil, cfg, fmt.Errorf("read: %w", err)
+		}
 	}
 
 	check := heifCheckFiletype(data)
@@ -36,11 +46,8 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 		return nil, cfg, ErrDecode
 	}
 
-	if heifGetVersionNumberMajor() == 1 && heifGetVersionNumberMinor() >= 14 {
-		heifContextSetMaxDecodingThreads(ctx, runtime.NumCPU())
-	}
+	handle := new(heifImageHandle)
 
-	handle := &heifImageHandle{}
 	e = heifContextGetPrimaryImageHandle(ctx, &handle)
 	if e.Code != 0 {
 		return nil, cfg, ErrDecode
@@ -49,51 +56,136 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 
 	cfg.Width = heifImageHandleGetWidth(handle)
 	cfg.Height = heifImageHandleGetHeight(handle)
-	cfg.ColorModel = color.NRGBAModel
+
+	isPremultiplied := heifImageHandleIsPremultipliedAlpha(handle)
+
+	var colorspace, chroma int
+	if versionMajor == 1 && versionMinor >= 17 {
+		e = heifImageHandleGetPreferredDecodingColorspace(handle, &colorspace, &chroma)
+		if e.Code != 0 {
+			return nil, cfg, ErrDecode
+		}
+
+		if colorspace == heifColorspaceUndefined || chroma == heifChromaUndefined {
+			colorspace = heifColorspaceYCbCr
+			chroma = heifChroma420
+			cfg.ColorModel = color.YCbCrModel
+		}
+		if colorspace == heifColorspaceRGB {
+			chroma = heifChromaInterleavedRGBA
+			if isPremultiplied {
+				cfg.ColorModel = color.RGBAModel
+			} else {
+				cfg.ColorModel = color.NRGBAModel
+			}
+		}
+	} else {
+		colorspace = heifColorspaceYCbCr
+		chroma = heifChroma420
+		cfg.ColorModel = color.YCbCrModel
+	}
 
 	if configOnly {
 		return nil, cfg, nil
 	}
 
-	img := &heifImage{}
-	e = heifImageCreate(cfg.Width, cfg.Height, heifColorspaceRgb, heifChromaInterleavedRgba, &img)
-	if e.Code != 0 {
-		return nil, cfg, ErrDecode
-	}
-	defer heifImageRelease(img)
-
-	e = heifImageAddPlane(img, heifChannelInterleaved, cfg.Width, cfg.Height, 4)
-	if e.Code != 0 {
-		return nil, cfg, ErrDecode
-	}
-
 	options := heifDecodingOptionsAlloc()
 	options.ConvertHdrTo8bit = 1
+	options.IgnoreTransformations = 1
 	defer heifDecodingOptionsFree(options)
 
-	e = heifDecodeImage(handle, &img, heifColorspaceRgb, heifChromaInterleavedRgba, options)
+	heifImg := new(heifImage)
+
+	e = heifDecodeImage(handle, &heifImg, colorspace, chroma, options)
 	if e.Code != 0 {
 		return nil, cfg, ErrDecode
 	}
 
-	var stride int
-	rgbaData := heifImageGetPlaneReadonly(img, heifChannelInterleaved, &stride)
-	size := cfg.Height * stride
+	var img image.Image
+	rect := image.Rect(0, 0, cfg.Width, cfg.Height)
+
+	switch colorspace {
+	case heifColorspaceYCbCr:
+		var subsampleRatio image.YCbCrSubsampleRatio
+		switch chroma {
+		case heifChroma420:
+			subsampleRatio = image.YCbCrSubsampleRatio420
+		case heifChroma422:
+			subsampleRatio = image.YCbCrSubsampleRatio422
+		case heifChroma444:
+			subsampleRatio = image.YCbCrSubsampleRatio444
+		}
+
+		var yStride, uStride int
+		y := heifImageGetPlaneReadonly(heifImg, heifChannelY, &yStride)
+		cb := heifImageGetPlaneReadonly(heifImg, heifChannelCb, &uStride)
+		cr := heifImageGetPlaneReadonly(heifImg, heifChannelCr, &uStride)
+
+		_, _, _, ch := yCbCrSize(rect, subsampleRatio)
+		i0 := yStride * cfg.Height
+		i1 := yStride*cfg.Height + 1*uStride*ch
+		i2 := yStride*cfg.Height + 2*uStride*ch
+		b := make([]byte, i2)
+
+		i := &image.YCbCr{
+			Y:              b[:i0:i0],
+			Cb:             b[i0:i1:i1],
+			Cr:             b[i1:i2:i2],
+			SubsampleRatio: subsampleRatio,
+			YStride:        yStride,
+			CStride:        uStride,
+			Rect:           rect,
+		}
+
+		copy(i.Y, unsafe.Slice(y, yStride*cfg.Height))
+		copy(i.Cb, unsafe.Slice(cb, uStride*ch))
+		copy(i.Cr, unsafe.Slice(cr, uStride*ch))
+
+		img = i
+	case heifColorspaceMonochrome:
+		var stride int
+		grayData := heifImageGetPlaneReadonly(heifImg, heifChannelY, &stride)
+		size := cfg.Height * stride
+
+		i := &image.Gray{
+			Pix:    make([]uint8, size),
+			Stride: stride,
+			Rect:   rect,
+		}
+
+		copy(i.Pix, unsafe.Slice(grayData, size))
+		img = i
+	case heifColorspaceRGB:
+		var stride int
+		rgbaData := heifImageGetPlaneReadonly(heifImg, heifChannelInterleaved, &stride)
+		size := cfg.Height * stride
+
+		if isPremultiplied {
+			i := &image.RGBA{
+				Pix:    make([]uint8, size),
+				Stride: stride,
+				Rect:   rect,
+			}
+
+			copy(i.Pix, unsafe.Slice(rgbaData, size))
+			img = i
+		} else {
+			i := &image.NRGBA{
+				Pix:    make([]uint8, size),
+				Stride: stride,
+				Rect:   rect,
+			}
+
+			copy(i.Pix, unsafe.Slice(rgbaData, size))
+			img = i
+		}
+	default:
+		return nil, cfg, fmt.Errorf("unsupported colorspace %d", colorspace)
+	}
 
 	runtime.KeepAlive(data)
 
-	rgba := &image.NRGBA{
-		Pix:    make([]uint8, size),
-		Stride: stride,
-		Rect: image.Rectangle{
-			Min: image.Point{X: 0, Y: 0},
-			Max: image.Point{X: cfg.Width, Y: cfg.Height},
-		},
-	}
-
-	copy(rgba.Pix, unsafe.Slice(rgbaData, size))
-
-	return rgba, cfg, nil
+	return img, cfg, nil
 }
 
 func init() {
@@ -116,6 +208,14 @@ func init() {
 
 	purego.RegisterLibFunc(&_heifGetVersionNumberMajor, libheif, "heif_get_version_number_major")
 	purego.RegisterLibFunc(&_heifGetVersionNumberMinor, libheif, "heif_get_version_number_minor")
+
+	versionMajor = heifGetVersionNumberMajor()
+	versionMinor = heifGetVersionNumberMinor()
+
+	if versionMajor == 1 && versionMinor >= 17 {
+		purego.RegisterLibFunc(&_heifImageHandleGetPreferredDecodingColorspace, libheif, "heif_image_handle_get_preferred_decoding_colorspace")
+	}
+
 	purego.RegisterLibFunc(&_heifCheckFiletype, libheif, "heif_check_filetype")
 	purego.RegisterLibFunc(&_heifContextAlloc, libheif, "heif_context_alloc")
 	purego.RegisterLibFunc(&_heifContextFree, libheif, "heif_context_free")
@@ -127,58 +227,45 @@ func init() {
 	purego.RegisterLibFunc(&_heifImageHandleRelease, libheif, "heif_image_handle_release")
 	purego.RegisterLibFunc(&_heifDecodingOptionsAlloc, libheif, "heif_decoding_options_alloc")
 	purego.RegisterLibFunc(&_heifDecodingOptionsFree, libheif, "heif_decoding_options_free")
-	purego.RegisterLibFunc(&_heifImageCreate, libheif, "heif_image_create")
-	purego.RegisterLibFunc(&_heifImageAddPlane, libheif, "heif_image_add_plane")
 	purego.RegisterLibFunc(&_heifDecodeImage, libheif, "heif_decode_image")
 	purego.RegisterLibFunc(&_heifImageGetPlaneReadonly, libheif, "heif_image_get_plane_readonly")
-	purego.RegisterLibFunc(&_heifImageRelease, libheif, "heif_image_release")
-
-	if heifGetVersionNumberMajor() == 1 && heifGetVersionNumberMinor() >= 14 {
-		purego.RegisterLibFunc(&_heifContextSetMaxDecodingThreads, libheif, "heif_context_set_max_decoding_threads")
-	}
 }
 
-const (
-	heifColorspaceRgb         = 1
-	heifChannelInterleaved    = 10
-	heifChromaInterleavedRgba = 11
-	heifFiletypeYesSupported  = 1
-)
-
 var (
-	libheif    uintptr
+	libheif uintptr
+
 	dynamic    bool
 	dynamicErr error
+
+	versionMajor int
+	versionMinor int
 )
 
 var (
-	_heifGetVersionNumberMajor            func() uint32
-	_heifGetVersionNumberMinor            func() uint32
-	_heifCheckFiletype                    func(*uint8, uint64) int
-	_heifContextAlloc                     func() *heifContext
-	_heifContextFree                      func(*heifContext)
-	_heifContextReadFromMemoryWithoutCopy func(*heifContext, *uint8, uint64, *byte) uintptr
-	_heifContextSetMaxDecodingThreads     func(*heifContext, int)
-	_heifContextGetPrimaryImageHandle     func(*heifContext, **heifImageHandle) uintptr
-	_heifImageHandleGetWidth              func(*heifImageHandle) int
-	_heifImageHandleGetHeight             func(*heifImageHandle) int
-	_heifImageHandleIsPremultipliedAlpha  func(*heifImageHandle) int
-	_heifImageHandleRelease               func(*heifImageHandle)
-	_heifDecodingOptionsAlloc             func() *heifDecodingOptions
-	_heifDecodingOptionsFree              func(*heifDecodingOptions)
-	_heifImageCreate                      func(int, int, int, int, **heifImage) uintptr
-	_heifImageAddPlane                    func(*heifImage, int, int, int, int) uintptr
-	_heifDecodeImage                      func(*heifImageHandle, **heifImage, int, int, *heifDecodingOptions) uintptr
-	_heifImageGetPlaneReadonly            func(*heifImage, int, *int) *uint8
-	_heifImageRelease                     func(*heifImage)
+	_heifGetVersionNumberMajor                     func() uint32
+	_heifGetVersionNumberMinor                     func() uint32
+	_heifCheckFiletype                             func(*uint8, uint64) int
+	_heifContextAlloc                              func() *heifContext
+	_heifContextFree                               func(*heifContext)
+	_heifContextReadFromMemoryWithoutCopy          func(*heifContext, *uint8, uint64, *byte) uintptr
+	_heifContextGetPrimaryImageHandle              func(*heifContext, **heifImageHandle) uintptr
+	_heifImageHandleGetWidth                       func(*heifImageHandle) int
+	_heifImageHandleGetHeight                      func(*heifImageHandle) int
+	_heifImageHandleIsPremultipliedAlpha           func(*heifImageHandle) int
+	_heifImageHandleGetPreferredDecodingColorspace func(*heifImageHandle, *int, *int) uintptr
+	_heifImageHandleRelease                        func(*heifImageHandle)
+	_heifDecodingOptionsAlloc                      func() *heifDecodingOptions
+	_heifDecodingOptionsFree                       func(*heifDecodingOptions)
+	_heifDecodeImage                               func(*heifImageHandle, **heifImage, int, int, *heifDecodingOptions) uintptr
+	_heifImageGetPlaneReadonly                     func(*heifImage, int, *int) *uint8
 )
 
-func heifGetVersionNumberMajor() uint32 {
-	return _heifGetVersionNumberMajor()
+func heifGetVersionNumberMajor() int {
+	return int(_heifGetVersionNumberMajor())
 }
 
-func heifGetVersionNumberMinor() uint32 {
-	return _heifGetVersionNumberMinor()
+func heifGetVersionNumberMinor() int {
+	return int(_heifGetVersionNumberMinor())
 }
 
 func heifCheckFiletype(data []byte) int {
@@ -197,10 +284,6 @@ func heifContextReadFromMemoryWithoutCopy(ctx *heifContext, data []byte) heifErr
 	ret := _heifContextReadFromMemoryWithoutCopy(ctx, &data[0], uint64(len(data)), nil)
 
 	return *(*heifError)(unsafe.Pointer(&ret))
-}
-
-func heifContextSetMaxDecodingThreads(ctx *heifContext, threads int) {
-	_heifContextSetMaxDecodingThreads(ctx, threads)
 }
 
 func heifContextGetPrimaryImageHandle(ctx *heifContext, handle **heifImageHandle) heifError {
@@ -223,8 +306,14 @@ func heifImageHandleIsPremultipliedAlpha(handle *heifImageHandle) bool {
 	return ret != 0
 }
 
-func heifImageHandleRelease(ctx *heifImageHandle) {
-	_heifImageHandleRelease(ctx)
+func heifImageHandleGetPreferredDecodingColorspace(handle *heifImageHandle, colorspace *int, chroma *int) heifError {
+	ret := _heifImageHandleGetPreferredDecodingColorspace(handle, colorspace, chroma)
+
+	return *(*heifError)(unsafe.Pointer(&ret))
+}
+
+func heifImageHandleRelease(handle *heifImageHandle) {
+	_heifImageHandleRelease(handle)
 }
 
 func heifDecodingOptionsAlloc() *heifDecodingOptions {
@@ -235,18 +324,6 @@ func heifDecodingOptionsFree(options *heifDecodingOptions) {
 	_heifDecodingOptionsFree(options)
 }
 
-func heifImageCreate(width, height, colorspace, chroma int, img **heifImage) heifError {
-	ret := _heifImageCreate(width, height, colorspace, chroma, img)
-
-	return *(*heifError)(unsafe.Pointer(&ret))
-}
-
-func heifImageAddPlane(img *heifImage, channel, width, height, bitDepth int) heifError {
-	ret := _heifImageAddPlane(img, channel, width, height, bitDepth)
-
-	return *(*heifError)(unsafe.Pointer(&ret))
-}
-
 func heifDecodeImage(handle *heifImageHandle, img **heifImage, colorspace int, chroma int, options *heifDecodingOptions) heifError {
 	ret := _heifDecodeImage(handle, img, colorspace, chroma, options)
 
@@ -255,10 +332,6 @@ func heifDecodeImage(handle *heifImageHandle, img **heifImage, colorspace int, c
 
 func heifImageGetPlaneReadonly(img *heifImage, channel int, stride *int) *uint8 {
 	return _heifImageGetPlaneReadonly(img, channel, stride)
-}
-
-func heifImageRelease(img *heifImage) {
-	_heifImageRelease(img)
 }
 
 type heifContext struct{}

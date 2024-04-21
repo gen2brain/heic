@@ -10,7 +10,7 @@ import (
 	"image/color"
 	"io"
 	"os"
-	"sync/atomic"
+	"sync"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -21,19 +21,26 @@ import (
 var heifWasm []byte
 
 func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
-	if !initialized.Load() {
-		initialize()
-	}
+	initializeOnce()
 
+	var err error
 	var cfg image.Config
-	var heif bytes.Buffer
+	var data []byte
 
-	_, err := heif.ReadFrom(r)
-	if err != nil {
-		return nil, cfg, fmt.Errorf("read: %w", err)
+	if configOnly {
+		data = make([]byte, heifMaxHeaderSize)
+		_, err = r.Read(data)
+		if err != nil {
+			return nil, cfg, fmt.Errorf("read: %w", err)
+		}
+	} else {
+		data, err = io.ReadAll(r)
+		if err != nil {
+			return nil, cfg, fmt.Errorf("read: %w", err)
+		}
 	}
 
-	inSize := heif.Len()
+	inSize := len(data)
 	ctx := context.Background()
 
 	res, err := _alloc.Call(ctx, uint64(inSize))
@@ -43,12 +50,12 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	inPtr := res[0]
 	defer _free.Call(ctx, inPtr)
 
-	ok := mod.Memory().Write(uint32(inPtr), heif.Bytes())
+	ok := mod.Memory().Write(uint32(inPtr), data)
 	if !ok {
 		return nil, cfg, ErrMemWrite
 	}
 
-	res, err = _alloc.Call(ctx, 4*3)
+	res, err = _alloc.Call(ctx, 4*5)
 	if err != nil {
 		return nil, cfg, fmt.Errorf("alloc: %w", err)
 	}
@@ -56,9 +63,11 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 
 	widthPtr := res[0]
 	heightPtr := res[0] + 4
-	stridePtr := res[0] + 8
+	colorspacePtr := res[0] + 8
+	chromaPtr := res[0] + 12
+	premultipliedPtr := res[0] + 16
 
-	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 1, widthPtr, heightPtr, stridePtr, 0)
+	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 1, widthPtr, heightPtr, colorspacePtr, chromaPtr, premultipliedPtr, 0)
 	if err != nil {
 		return nil, cfg, fmt.Errorf("decode: %w", err)
 	}
@@ -77,20 +86,80 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 		return nil, cfg, ErrMemRead
 	}
 
-	stride, ok := mod.Memory().ReadUint32Le(uint32(stridePtr))
+	colorspace, ok := mod.Memory().ReadUint32Le(uint32(colorspacePtr))
+	if !ok {
+		return nil, cfg, ErrMemRead
+	}
+
+	chroma, ok := mod.Memory().ReadUint32Le(uint32(chromaPtr))
+	if !ok {
+		return nil, cfg, ErrMemRead
+	}
+
+	premultiplied, ok := mod.Memory().ReadUint32Le(uint32(premultipliedPtr))
 	if !ok {
 		return nil, cfg, ErrMemRead
 	}
 
 	cfg.Width = int(width)
 	cfg.Height = int(height)
-	cfg.ColorModel = color.NRGBAModel
+
+	switch colorspace {
+	case heifColorspaceYCbCr:
+		cfg.ColorModel = color.YCbCrModel
+	case heifColorspaceMonochrome:
+		cfg.ColorModel = color.GrayModel
+	case heifColorspaceRGB:
+		if premultiplied == 1 {
+			cfg.ColorModel = color.RGBAModel
+		} else {
+			cfg.ColorModel = color.NRGBAModel
+		}
+	}
 
 	if configOnly {
 		return nil, cfg, nil
 	}
 
-	size := cfg.Height * int(stride)
+	var size int
+	var stride int
+	var w, h, cw, ch int
+	var i0, i1, i2 int
+	var subsampleRatio image.YCbCrSubsampleRatio
+
+	rect := image.Rect(0, 0, cfg.Width, cfg.Height)
+
+	switch colorspace {
+	case heifColorspaceYCbCr:
+		switch chroma {
+		case heifChroma420:
+			subsampleRatio = image.YCbCrSubsampleRatio420
+		case heifChroma422:
+			subsampleRatio = image.YCbCrSubsampleRatio422
+		case heifChroma444:
+			subsampleRatio = image.YCbCrSubsampleRatio444
+		default:
+			return nil, cfg, fmt.Errorf("unsupported chroma %d", chroma)
+		}
+
+		w, h, cw, ch = yCbCrSize(rect, subsampleRatio)
+		w = alignm(w)
+		cw = alignm(cw)
+
+		i0 = w * h
+		i1 = w*h + 1*cw*ch
+		i2 = w*h + 2*cw*ch
+
+		size = i2
+	case heifColorspaceMonochrome:
+		stride = alignm(cfg.Width * 1)
+		size = cfg.Height * stride
+	case heifColorspaceRGB:
+		stride = alignm(cfg.Width * 4)
+		size = cfg.Height * stride
+	default:
+		return nil, cfg, fmt.Errorf("unsupported colorspace %d", colorspace)
+	}
 
 	res, err = _alloc.Call(ctx, uint64(size))
 	if err != nil {
@@ -99,7 +168,7 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	outPtr := res[0]
 	defer _free.Call(ctx, outPtr)
 
-	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 0, widthPtr, heightPtr, stridePtr, outPtr)
+	res, err = _decode.Call(ctx, inPtr, uint64(inSize), 0, widthPtr, heightPtr, colorspacePtr, chromaPtr, premultipliedPtr, outPtr)
 	if err != nil {
 		return nil, cfg, fmt.Errorf("decode: %w", err)
 	}
@@ -113,13 +182,39 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 		return nil, cfg, ErrMemRead
 	}
 
-	img := &image.NRGBA{
-		Pix:    out,
-		Stride: int(stride),
-		Rect: image.Rectangle{
-			Min: image.Point{X: 0, Y: 0},
-			Max: image.Point{X: cfg.Width, Y: cfg.Height},
-		},
+	var img image.Image
+
+	switch colorspace {
+	case heifColorspaceYCbCr:
+		img = &image.YCbCr{
+			Y:              out[:i0:i0],
+			Cb:             out[i0:i1:i1],
+			Cr:             out[i1:i2:i2],
+			SubsampleRatio: subsampleRatio,
+			YStride:        w,
+			CStride:        cw,
+			Rect:           rect,
+		}
+	case heifColorspaceMonochrome:
+		img = &image.Gray{
+			Pix:    out,
+			Stride: stride,
+			Rect:   rect,
+		}
+	case heifColorspaceRGB:
+		if premultiplied == 1 {
+			img = &image.RGBA{
+				Pix:    out,
+				Stride: stride,
+				Rect:   rect,
+			}
+		} else {
+			img = &image.NRGBA{
+				Pix:    out,
+				Stride: stride,
+				Rect:   rect,
+			}
+		}
 	}
 
 	return img, cfg, nil
@@ -132,14 +227,10 @@ var (
 	_free   api.Function
 	_decode api.Function
 
-	initialized atomic.Bool
+	initializeOnce = sync.OnceFunc(initialize)
 )
 
 func initialize() {
-	if initialized.Load() {
-		return
-	}
-
 	ctx := context.Background()
 	rt := wazero.NewRuntime(ctx)
 
@@ -147,6 +238,7 @@ func initialize() {
 	if err != nil {
 		panic(err)
 	}
+	defer r.Close()
 
 	var data bytes.Buffer
 	_, err = data.ReadFrom(r)
@@ -169,6 +261,4 @@ func initialize() {
 	_alloc = mod.ExportedFunction("malloc")
 	_free = mod.ExportedFunction("free")
 	_decode = mod.ExportedFunction("decode")
-
-	initialized.Store(true)
 }

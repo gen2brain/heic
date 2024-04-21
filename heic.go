@@ -1,4 +1,4 @@
-// Package heic implements an HEIC image decoder based on libheif compiled to WASM.
+// Package heic implements an HEIC image decoder based on libheif/libde265 compiled to WASM.
 package heic
 
 import (
@@ -57,6 +57,57 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 // Dynamic returns error (if there was any) during opening dynamic/shared library.
 func Dynamic() error {
 	return dynamicErr
+}
+
+const (
+	alignSize = 16
+
+	heifMaxHeaderSize = 32768
+
+	heifColorspaceUndefined  = 99
+	heifColorspaceYCbCr      = 0
+	heifColorspaceRGB        = 1
+	heifColorspaceMonochrome = 2
+
+	heifChannelY           = 0
+	heifChannelCb          = 1
+	heifChannelCr          = 2
+	heifChannelR           = 3
+	heifChannelG           = 4
+	heifChannelB           = 5
+	heifChannelAlpha       = 6
+	heifChannelInterleaved = 10
+
+	heifChromaUndefined       = 99
+	heifChromaMonochrome      = 0
+	heifChroma420             = 1
+	heifChroma422             = 2
+	heifChroma444             = 3
+	heifChromaInterleavedRGBA = 11
+
+	heifFiletypeYesSupported = 1
+)
+
+func alignm(a int) int {
+	return (a + (alignSize - 1)) & (^(alignSize - 1))
+}
+
+func yCbCrSize(r image.Rectangle, subsampleRatio image.YCbCrSubsampleRatio) (w, h, cw, ch int) {
+	w, h = r.Dx(), r.Dy()
+
+	switch subsampleRatio {
+	case image.YCbCrSubsampleRatio422:
+		cw = (r.Max.X+1)/2 - r.Min.X/2
+		ch = h
+	case image.YCbCrSubsampleRatio420:
+		cw = (r.Max.X+1)/2 - r.Min.X/2
+		ch = (r.Max.Y+1)/2 - r.Min.Y/2
+	default:
+		cw = w
+		ch = h
+	}
+
+	return
 }
 
 func init() {
