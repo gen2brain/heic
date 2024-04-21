@@ -1,4 +1,4 @@
-//go:build !unix && !darwin && !windows
+//go:build (!unix && !darwin && !windows) || nodynamic
 
 package heic
 
@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"image"
 	"io"
-	"runtime"
 )
 
 var (
 	dynamic    = false
-	dynamicErr = fmt.Errorf("heic: unsupported os: %s", runtime.GOOS)
+	dynamicErr = fmt.Errorf("heic: dynamic disabled")
 )
 
 func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
