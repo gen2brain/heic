@@ -3,11 +3,16 @@ package heic
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"io"
+	"os"
 	"testing"
 )
+
+//go:embed testdata/test.heic
+var testHeic []byte
 
 //go:embed testdata/test8.heic
 var testHeic8 []byte
@@ -15,25 +20,168 @@ var testHeic8 []byte
 //go:embed testdata/test12.heic
 var testHeic12 []byte
 
+//go:embed testdata/gray.heic
+var testGray []byte
+
 func TestDecode(t *testing.T) {
-	img, err := Decode(bytes.NewReader(testHeic8))
+	img, _, err := decode(bytes.NewReader(testHeic), false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = jpeg.Encode(io.Discard, img, nil)
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecode8(t *testing.T) {
+	img, _, err := decode(bytes.NewReader(testHeic8), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
 	if err != nil {
 		t.Error(err)
 	}
 }
 
 func TestDecode12(t *testing.T) {
-	img, err := Decode(bytes.NewReader(testHeic12))
+	img, _, err := decode(bytes.NewReader(testHeic12), false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = jpeg.Encode(io.Discard, img, nil)
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecodeGray(t *testing.T) {
+	img, _, err := decode(bytes.NewReader(testGray), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecodeDynamic(t *testing.T) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		t.Skip()
+	}
+
+	img, _, err := decodeDynamic(bytes.NewReader(testHeic), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecode8Dynamic(t *testing.T) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		t.Skip()
+	}
+
+	img, _, err := decodeDynamic(bytes.NewReader(testHeic8), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecode12Dynamic(t *testing.T) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		t.Skip()
+	}
+
+	img, _, err := decodeDynamic(bytes.NewReader(testHeic12), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecodeGrayDynamic(t *testing.T) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		t.Skip()
+	}
+
+	img, _, err := decodeDynamic(bytes.NewReader(testGray), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
 	if err != nil {
 		t.Error(err)
 	}
@@ -52,7 +200,7 @@ func TestImageDecode(t *testing.T) {
 }
 
 func TestDecodeConfig(t *testing.T) {
-	cfg, err := DecodeConfig(bytes.NewReader(testHeic8))
+	_, cfg, err := decode(bytes.NewReader(testHeic8), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +214,22 @@ func TestDecodeConfig(t *testing.T) {
 	}
 }
 
-func BenchmarkDecodeHEIC(b *testing.B) {
+func TestDecodeConfigDynamic(t *testing.T) {
+	_, cfg, err := decodeDynamic(bytes.NewReader(testHeic8), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Width != 512 {
+		t.Errorf("width: got %d, want %d", cfg.Width, 512)
+	}
+
+	if cfg.Height != 512 {
+		t.Errorf("height: got %d, want %d", cfg.Height, 512)
+	}
+}
+
+func BenchmarkDecode(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, err := decode(bytes.NewReader(testHeic8), false)
 		if err != nil {
@@ -75,10 +238,10 @@ func BenchmarkDecodeHEIC(b *testing.B) {
 	}
 }
 
-func BenchmarkDecodeHEICDynamic(b *testing.B) {
-	if Dynamic() != nil {
-		b.Errorf("dynamic/shared library not installed")
-		return
+func BenchmarkDecodeDynamic(b *testing.B) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		b.Skip()
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -89,7 +252,7 @@ func BenchmarkDecodeHEICDynamic(b *testing.B) {
 	}
 }
 
-func BenchmarkDecodeConfigHEIC(b *testing.B) {
+func BenchmarkDecodeConfig(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, err := decode(bytes.NewReader(testHeic8), true)
 		if err != nil {
@@ -98,10 +261,10 @@ func BenchmarkDecodeConfigHEIC(b *testing.B) {
 	}
 }
 
-func BenchmarkDecodeConfigHEICDynamic(b *testing.B) {
-	if Dynamic() != nil {
-		b.Errorf("dynamic/shared library not installed")
-		return
+func BenchmarkDecodeConfigDynamic(b *testing.B) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		b.Skip()
 	}
 
 	for i := 0; i < b.N; i++ {
@@ -110,4 +273,29 @@ func BenchmarkDecodeConfigHEICDynamic(b *testing.B) {
 			b.Error(err)
 		}
 	}
+}
+
+type discard struct{}
+
+func (d discard) Close() error {
+	return nil
+}
+
+func (discard) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+var discardCloser io.WriteCloser = discard{}
+
+func writeCloser(s ...string) (io.WriteCloser, error) {
+	if len(s) > 0 {
+		f, err := os.Create(s[0])
+		if err != nil {
+			return nil, err
+		}
+
+		return f, nil
+	}
+
+	return discardCloser, nil
 }
