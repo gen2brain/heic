@@ -215,6 +215,11 @@ func TestDecodeConfig(t *testing.T) {
 }
 
 func TestDecodeConfigDynamic(t *testing.T) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		t.Skip()
+	}
+
 	_, cfg, err := decodeDynamic(bytes.NewReader(testHeic8), true)
 	if err != nil {
 		t.Fatal(err)
