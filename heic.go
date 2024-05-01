@@ -112,4 +112,14 @@ func yCbCrSize(r image.Rectangle, subsampleRatio image.YCbCrSubsampleRatio) (w, 
 
 func init() {
 	image.RegisterFormat("heic", "????ftypheic", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftypheic", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftypheim", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftypheis", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftypheix", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftyphevc", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftyphevm", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftyphevs", Decode, DecodeConfig)
+	image.RegisterFormat("heif", "????ftypmif1", Decode, DecodeConfig)
+	image.RegisterFormat("avif", "????ftypavif", Decode, DecodeConfig)
+	image.RegisterFormat("avif", "????ftypavis", Decode, DecodeConfig)
 }
