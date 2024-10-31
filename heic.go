@@ -59,6 +59,17 @@ func Dynamic() error {
 	return dynamicErr
 }
 
+// Init initializes wazero runtime and compiles the module.
+// This function does nothing if a dynamic/shared library is used and Dynamic() returns nil.
+// There is no need to explicitly call this function, first Decode will initialize the runtime.
+func Init() {
+	if dynamic && dynamicErr == nil {
+		return
+	}
+
+	initOnce()
+}
+
 const (
 	alignSize = 16
 
