@@ -13,7 +13,6 @@ import (
 	"sync"
 
 	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 )
 
@@ -21,11 +20,22 @@ import (
 var heifWasm []byte
 
 func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
-	initializeOnce()
+	initOnce()
 
-	var err error
 	var cfg image.Config
 	var data []byte
+
+	ctx := context.Background()
+	mod, err := rt.InstantiateModule(ctx, cm, mc)
+	if err != nil {
+		return nil, cfg, err
+	}
+
+	defer mod.Close(ctx)
+
+	_alloc := mod.ExportedFunction("malloc")
+	_free := mod.ExportedFunction("free")
+	_decode := mod.ExportedFunction("decode")
 
 	if configOnly {
 		data = make([]byte, heifMaxHeaderSize)
@@ -41,7 +51,6 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	}
 
 	inSize := len(data)
-	ctx := context.Background()
 
 	res, err := _alloc.Call(ctx, uint64(inSize))
 	if err != nil {
@@ -221,18 +230,16 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 }
 
 var (
-	mod api.Module
+	rt wazero.Runtime
+	cm wazero.CompiledModule
+	mc wazero.ModuleConfig
 
-	_alloc  api.Function
-	_free   api.Function
-	_decode api.Function
-
-	initializeOnce = sync.OnceFunc(initialize)
+	initOnce = sync.OnceFunc(initialize)
 )
 
 func initialize() {
 	ctx := context.Background()
-	rt := wazero.NewRuntime(ctx)
+	rt = wazero.NewRuntime(ctx)
 
 	r, err := gzip.NewReader(bytes.NewReader(heifWasm))
 	if err != nil {
@@ -246,19 +253,11 @@ func initialize() {
 		panic(err)
 	}
 
-	compiled, err := rt.CompileModule(ctx, data.Bytes())
+	cm, err = rt.CompileModule(ctx, data.Bytes())
 	if err != nil {
 		panic(err)
 	}
 
 	wasi_snapshot_preview1.MustInstantiate(ctx, rt)
-
-	mod, err = rt.InstantiateModule(ctx, compiled, wazero.NewModuleConfig().WithStderr(os.Stderr).WithStdout(os.Stdout))
-	if err != nil {
-		panic(err)
-	}
-
-	_alloc = mod.ExportedFunction("malloc")
-	_free = mod.ExportedFunction("free")
-	_decode = mod.ExportedFunction("decode")
+	mc = wazero.NewModuleConfig().WithStderr(os.Stderr).WithStdout(os.Stdout)
 }

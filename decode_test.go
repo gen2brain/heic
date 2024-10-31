@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"io"
 	"os"
+	"sync"
 	"testing"
 )
 
@@ -234,6 +235,26 @@ func TestDecodeConfigDynamic(t *testing.T) {
 	}
 }
 
+func TestDecodeSync(t *testing.T) {
+	wg := sync.WaitGroup{}
+	ch := make(chan bool, 2)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			ch <- true
+			defer func() { <-ch; wg.Done() }()
+
+			_, _, err := decode(bytes.NewReader(testHeic8), false)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+		}()
+	}
+
+	wg.Wait()
+}
 func BenchmarkDecode(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, err := decode(bytes.NewReader(testHeic8), false)
