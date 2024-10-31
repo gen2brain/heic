@@ -61,7 +61,6 @@ int decode(uint8_t *heic_in, int heic_in_size, int config_only, uint32_t *width,
 
     struct heif_decoding_options* options = heif_decoding_options_alloc();
     options->convert_hdr_to_8bit = 1;
-    options->ignore_transformations = 1;
 
     struct heif_image *img;
 

@@ -91,7 +91,6 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 
 	options := heifDecodingOptionsAlloc()
 	options.ConvertHdrTo8bit = 1
-	options.IgnoreTransformations = 1
 	defer heifDecodingOptionsFree(options)
 
 	heifImg := new(heifImage)
