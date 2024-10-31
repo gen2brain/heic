@@ -1,4 +1,4 @@
-LIBHEIF_VERSION = v1.17.6
+LIBHEIF_VERSION = v1.18.2
 LIBDE265_VERSION = v1.0.15
 
 LIBHEIF_SRC = $(PWD)/libheif
@@ -20,11 +20,12 @@ all: $(BIN)
 $(LIBHEIF_SRC):
 	git clone -b $(LIBHEIF_VERSION) --depth 1 --recursive --jobs `nproc` https://github.com/strukturag/libheif
 	sed -i '/HeifFile::read_from_file/,+15d' $(LIBHEIF_SRC)/libheif/file.cc
-	sed -i '/heif_file_writer_write(/,+13d' $(LIBHEIF_SRC)/libheif/heif.cc
-	sed -i '/heif_file_writer_write/d' $(LIBHEIF_SRC)/libheif/heif.cc
+	sed -i '/HeifFile::read_from_file/d' $(LIBHEIF_SRC)/libheif/file.cc
+	sed -i '/heif_file_writer_write(/,+13d' $(LIBHEIF_SRC)/libheif/api/libheif/heif.cc
+	sed -i '/heif_file_writer_write/d' $(LIBHEIF_SRC)/libheif/api/libheif/heif.cc
 	sed -i '/target_colorspace = heif_colorspace_RGB/d' $(LIBHEIF_SRC)/libheif/context.cc
 	sed -i '/de265_start_worker_threads/d' $(LIBHEIF_SRC)/libheif/plugins/decoder_libde265.cc
-	sed -i '195i return get_decoder_plugin_libde265();' $(LIBHEIF_SRC)/libheif/plugin_registry.cc
+	sed -i '227i return get_decoder_plugin_libde265();' $(LIBHEIF_SRC)/libheif/plugin_registry.cc
 	mkdir -p $(LIBHEIF_BUILD)
 	test -d $@
 
@@ -95,7 +96,7 @@ $(BIN): $(LIBDE265_BUILD)/libde265/libde265.a $(LIBHEIF_BUILD)/libheif/libheif.a
 		-Wl,--export=decode \
 		-mexec-model=reactor \
 		-mnontrapping-fptoint \
-		-I${LIBHEIF_SRC} \
+		-I${LIBHEIF_SRC}/libheif/api \
 		-I${LIBHEIF_BUILD} \
 		-o $@ \
 		-Wall \
