@@ -257,6 +257,11 @@ func TestDecodeSync(t *testing.T) {
 }
 
 func TestDecodeSyncDynamic(t *testing.T) {
+	if err := Dynamic(); err != nil {
+		fmt.Println(err)
+		t.Skip()
+	}
+
 	wg := sync.WaitGroup{}
 	ch := make(chan bool, 2)
 
