@@ -73,7 +73,7 @@ func Init() {
 const (
 	alignSize = 16
 
-	heifMaxHeaderSize = 32768
+	heifMaxHeaderSize = 262144
 
 	heifColorspaceUndefined  = 99
 	heifColorspaceYCbCr      = 0
