@@ -282,6 +282,35 @@ func TestDecodeSyncDynamic(t *testing.T) {
 	wg.Wait()
 }
 
+// smallChunkReader wraps an io.Reader and limits Read calls to small chunks,
+// simulating what an io.Reader passed to image.DecodeConfig might legitimately
+// do. (The io.Reader contract allows this.)
+type smallChunkReader struct{ io.Reader }
+
+func (r smallChunkReader) Read(p []byte) (int, error) {
+	const chunkSize = 128
+	if len(p) > chunkSize {
+		p = p[:chunkSize]
+	}
+	return r.Reader.Read(p)
+}
+
+func TestDecodeConfigViaImagesPackage(t *testing.T) {
+	cfg, typ, err := image.DecodeConfig(smallChunkReader{bytes.NewReader(testHeic)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g, w := cfg.Width, 1346; g != w {
+		t.Fatalf("invalid width: got %d, want %d", g, w)
+	}
+	if g, h := cfg.Height, 1346; g != h {
+		t.Fatalf("invalid height: got %d, want %d", g, h)
+	}
+	if typ != "heic" {
+		t.Fatalf("invalid type; got %q; want %q", typ, "heic")
+	}
+}
+
 func BenchmarkDecode(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		_, _, err := decode(bytes.NewReader(testHeic8), false)
