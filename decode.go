@@ -40,8 +40,7 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	_decode := mod.ExportedFunction("decode")
 
 	if configOnly {
-		data = make([]byte, heifMaxHeaderSize)
-		_, err = r.Read(data)
+		data, err = io.ReadAll(io.LimitReader(r, heifMaxHeaderSize))
 		if err != nil {
 			return nil, cfg, fmt.Errorf("read: %w", err)
 		}
