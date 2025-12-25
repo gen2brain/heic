@@ -11,11 +11,20 @@ const (
 	libname = "libheif.dll"
 )
 
-func loadLibrary() (uintptr, error) {
-	handle, err := syscall.LoadLibrary(libname)
-	if err != nil {
-		return 0, fmt.Errorf("cannot load library %s: %w", libname, err)
+func loadLibrary() (handle uintptr, err error) {
+	paths := []string{
+		libname,
+		"heif.dll", // what vcpkg builds & names it
 	}
-
-	return uintptr(handle), nil
+	var firstErr error
+	for _, path := range paths {
+		sysHandle, err := syscall.LoadLibrary(path)
+		if err == nil {
+			return uintptr(sysHandle), nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return 0, fmt.Errorf("cannot load library %s: %w", libname, firstErr)
 }

@@ -4,7 +4,6 @@ jobs:
   test:
     strategy:
       matrix:
-        go-version: [1.23.x]
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
@@ -15,6 +14,27 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version-file: go.mod
+    - name: "[macos] install libheif"
+      if: runner.os == 'macOS'
+      run: brew install libheif
+    - name: "[linux] install libheif"
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y libheif-dev libheif1
+    - name: "[windows] cache vcpkg artifacts"
+      if: runner.os == 'Windows'
+      uses: actions/cache@v4
+      id: vcpkg-cache
+      with:
+        path: C:\Users\runneradmin\AppData\Local\vcpkg\archives
+        key: vcpkg-libheif-v1
+    - name: "[windows] install libheif"
+      if: runner.os == 'Windows'
+      run: |
+        vcpkg install libheif:x64-windows
+        vcpkg integrate install
+        dir C:/vcpkg/installed/x64-windows/bin
+        Get-ChildItem -Path "C:\vcpkg\installed\x64-windows\bin\*.dll" | Copy-Item -Destination .
+        dir
     - name: Test
-      run: go test
+      run: go test -v -bench=. -benchtime=1x

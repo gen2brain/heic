@@ -3,8 +3,6 @@
 package heic
 
 import (
-	"fmt"
-
 	"github.com/ebitengine/purego"
 )
 
@@ -12,11 +10,15 @@ const (
 	libname = "libheif.dylib"
 )
 
-func loadLibrary() (uintptr, error) {
-	handle, err := purego.Dlopen(libname, purego.RTLD_NOW|purego.RTLD_GLOBAL)
-	if err != nil {
-		return 0, fmt.Errorf("cannot load library: %w", err)
+func loadLibrary() (handle uintptr, err error) {
+	for _, path := range []string{
+		libname,
+		"/opt/homebrew/lib/libheif.dylib",
+	} {
+		handle, err = purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_GLOBAL)
+		if err == nil {
+			return handle, nil
+		}
 	}
-
-	return uintptr(handle), nil
+	return 0, err
 }

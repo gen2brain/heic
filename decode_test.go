@@ -3,11 +3,12 @@ package heic
 import (
 	"bytes"
 	_ "embed"
-	"fmt"
 	"image"
 	"image/jpeg"
 	"io"
 	"os"
+	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 )
@@ -96,11 +97,23 @@ func TestDecodeGray(t *testing.T) {
 	}
 }
 
-func TestDecodeDynamic(t *testing.T) {
+var inCI, _ = strconv.ParseBool(os.Getenv("CI"))
+
+func requireDynamic(t testing.TB) {
 	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		t.Skip()
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping dynamic library test on Windows in CI; it doesn't work yet: https://github.com/gen2brain/heic/issues/11")
+		}
+		if inCI {
+			t.Fatalf("libheif should be available in CI on %s, but got: %v", runtime.GOOS, err)
+		}
+		t.Helper()
+		t.Skipf("skipping dynamic library test; libheif not available: %v", err)
 	}
+}
+
+func TestDecodeDynamic(t *testing.T) {
+	requireDynamic(t)
 
 	img, _, err := decodeDynamic(bytes.NewReader(testHeic), false)
 	if err != nil {
@@ -120,10 +133,7 @@ func TestDecodeDynamic(t *testing.T) {
 }
 
 func TestDecode8Dynamic(t *testing.T) {
-	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		t.Skip()
-	}
+	requireDynamic(t)
 
 	img, _, err := decodeDynamic(bytes.NewReader(testHeic8), false)
 	if err != nil {
@@ -143,10 +153,7 @@ func TestDecode8Dynamic(t *testing.T) {
 }
 
 func TestDecode12Dynamic(t *testing.T) {
-	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		t.Skip()
-	}
+	requireDynamic(t)
 
 	img, _, err := decodeDynamic(bytes.NewReader(testHeic12), false)
 	if err != nil {
@@ -166,10 +173,7 @@ func TestDecode12Dynamic(t *testing.T) {
 }
 
 func TestDecodeGrayDynamic(t *testing.T) {
-	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		t.Skip()
-	}
+	requireDynamic(t)
 
 	img, _, err := decodeDynamic(bytes.NewReader(testGray), false)
 	if err != nil {
@@ -189,50 +193,34 @@ func TestDecodeGrayDynamic(t *testing.T) {
 }
 
 func TestImageDecode(t *testing.T) {
-	img, _, err := image.Decode(bytes.NewReader(testHeic8))
-	if err != nil {
-		t.Fatal(err)
-	}
+	testBothWays(t, func(t *testing.T) {
+		img, _, err := image.Decode(bytes.NewReader(testHeic8))
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	err = jpeg.Encode(io.Discard, img, nil)
-	if err != nil {
-		t.Error(err)
-	}
+		err = jpeg.Encode(io.Discard, img, nil)
+		if err != nil {
+			t.Error(err)
+		}
+	})
 }
 
 func TestDecodeConfig(t *testing.T) {
-	_, cfg, err := decode(bytes.NewReader(testHeic8), true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	testBothWays(t, func(t *testing.T) {
+		cfg, err := DecodeConfig(bytes.NewReader(testHeic8))
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	if cfg.Width != 512 {
-		t.Errorf("width: got %d, want %d", cfg.Width, 512)
-	}
+		if cfg.Width != 512 {
+			t.Errorf("width: got %d, want %d", cfg.Width, 512)
+		}
 
-	if cfg.Height != 512 {
-		t.Errorf("height: got %d, want %d", cfg.Height, 512)
-	}
-}
-
-func TestDecodeConfigDynamic(t *testing.T) {
-	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		t.Skip()
-	}
-
-	_, cfg, err := decodeDynamic(bytes.NewReader(testHeic8), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if cfg.Width != 512 {
-		t.Errorf("width: got %d, want %d", cfg.Width, 512)
-	}
-
-	if cfg.Height != 512 {
-		t.Errorf("height: got %d, want %d", cfg.Height, 512)
-	}
+		if cfg.Height != 512 {
+			t.Errorf("height: got %d, want %d", cfg.Height, 512)
+		}
+	})
 }
 
 func TestDecodeSync(t *testing.T) {
@@ -257,10 +245,7 @@ func TestDecodeSync(t *testing.T) {
 }
 
 func TestDecodeSyncDynamic(t *testing.T) {
-	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		t.Skip()
-	}
+	requireDynamic(t)
 
 	wg := sync.WaitGroup{}
 	ch := make(chan bool, 2)
@@ -296,19 +281,35 @@ func (r smallChunkReader) Read(p []byte) (int, error) {
 }
 
 func TestDecodeConfigViaImagesPackage(t *testing.T) {
-	cfg, typ, err := image.DecodeConfig(smallChunkReader{bytes.NewReader(testHeic)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if g, w := cfg.Width, 1346; g != w {
-		t.Fatalf("invalid width: got %d, want %d", g, w)
-	}
-	if g, h := cfg.Height, 1346; g != h {
-		t.Fatalf("invalid height: got %d, want %d", g, h)
-	}
-	if typ != "heic" {
-		t.Fatalf("invalid type; got %q; want %q", typ, "heic")
-	}
+	testBothWays(t, func(t *testing.T) {
+		cfg, typ, err := image.DecodeConfig(smallChunkReader{bytes.NewReader(testHeic)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if g, w := cfg.Width, 1346; g != w {
+			t.Fatalf("invalid width: got %d, want %d", g, w)
+		}
+		if g, h := cfg.Height, 1346; g != h {
+			t.Fatalf("invalid height: got %d, want %d", g, h)
+		}
+		if typ != "heic" {
+			t.Fatalf("invalid type; got %q; want %q", typ, "heic")
+		}
+	})
+}
+
+// testBothWays runs fn in both wasm mode and dynamic library mode, if possible.
+func testBothWays(t *testing.T, fn func(t *testing.T)) {
+	t.Run("wasm", func(t *testing.T) {
+		was := ForceWasmMode
+		ForceWasmMode = true
+		t.Cleanup(func() { ForceWasmMode = was })
+		fn(t)
+	})
+	t.Run("dynamic", func(t *testing.T) {
+		requireDynamic(t)
+		fn(t)
+	})
 }
 
 func BenchmarkDecode(b *testing.B) {
@@ -321,10 +322,7 @@ func BenchmarkDecode(b *testing.B) {
 }
 
 func BenchmarkDecodeDynamic(b *testing.B) {
-	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		b.Skip()
-	}
+	requireDynamic(b)
 
 	for i := 0; i < b.N; i++ {
 		_, _, err := decodeDynamic(bytes.NewReader(testHeic8), false)
@@ -344,10 +342,7 @@ func BenchmarkDecodeConfig(b *testing.B) {
 }
 
 func BenchmarkDecodeConfigDynamic(b *testing.B) {
-	if err := Dynamic(); err != nil {
-		fmt.Println(err)
-		b.Skip()
-	}
+	requireDynamic(b)
 
 	for i := 0; i < b.N; i++ {
 		_, _, err := decodeDynamic(bytes.NewReader(testHeic8), true)

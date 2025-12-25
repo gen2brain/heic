@@ -19,8 +19,7 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	var data []byte
 
 	if configOnly {
-		data = make([]byte, heifMaxHeaderSize)
-		_, err = r.Read(data)
+		data, err = io.ReadAll(io.LimitReader(r, heifMaxHeaderSize))
 		if err != nil {
 			return nil, cfg, fmt.Errorf("read: %w", err)
 		}
@@ -188,6 +187,12 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 }
 
 func init() {
+	if runtime.GOOS == "windows" {
+		dynamic = false
+		dynamicErr = fmt.Errorf("dynamic library loading not supported on windows yet; see https://github.com/gen2brain/heic/issues/11")
+		return
+	}
+
 	var err error
 	defer func() {
 		if r := recover(); r != nil {

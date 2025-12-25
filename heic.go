@@ -19,7 +19,7 @@ func Decode(r io.Reader) (image.Image, error) {
 	var err error
 	var img image.Image
 
-	if dynamic {
+	if dynamic && !ForceWasmMode {
 		img, _, err = decodeDynamic(r, false)
 		if err != nil {
 			return nil, err
@@ -39,7 +39,7 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 	var err error
 	var cfg image.Config
 
-	if dynamic {
+	if dynamic && !ForceWasmMode {
 		_, cfg, err = decodeDynamic(r, true)
 		if err != nil {
 			return image.Config{}, err
@@ -53,6 +53,15 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 
 	return cfg, nil
 }
+
+// ForceWasmMode, if true, forces using the WASM-based decoder even if a
+// dynamic/shared library is available.
+//
+// This exists mainly for testing purposes.
+//
+// It is not safe to change this concurrently with any other use of this
+// package.
+var ForceWasmMode bool
 
 // Dynamic returns error (if there was any) during opening dynamic/shared library.
 func Dynamic() error {
