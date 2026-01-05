@@ -38,3 +38,54 @@ jobs:
         dir
     - name: Test
       run: go test -v -bench=. -benchtime=1x
+
+  # Test that we can at least cross-compile the package & tests on a variety
+  # of other platforms.
+  cross-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # don't abort the entire matrix if one element fails
+      matrix:
+        include:
+          # Note: {linux,windows,darwin}/amd64 is not in this matrix, because those
+          # are tested more exhaustively in the 'test' job above.
+          - goos: linux
+            goarch: "386" # quoted for yaml
+          - goos: linux
+            goarch: mips
+          - goos: linux
+            goarch: mipsle
+          - goos: linux
+            goarch: loong64
+          - goos: linux
+            goarch: arm
+            goarm: "5"
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+          # Windows
+          - goos: windows
+            goarch: arm64
+          # BSDs
+          - goos: freebsd
+            goarch: amd64
+          - goos: openbsd
+            goarch: amd64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+    - name: build
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm }}
+        CGO_ENABLED: "0"
+      run: |
+        go install ./...
+        go test --exec=true ./...
+
