@@ -9,9 +9,10 @@ import (
 
 // Errors .
 var (
-	ErrMemRead  = errors.New("heic: mem read failed")
-	ErrMemWrite = errors.New("heic: mem write failed")
-	ErrDecode   = errors.New("heic: decode failed")
+	ErrMemRead    = errors.New("heic: mem read failed")
+	ErrMemWrite   = errors.New("heic: mem write failed")
+	ErrDecode     = errors.New("heic: decode failed")
+	ErrNoThumbnail = errors.New("heic: no thumbnail")
 )
 
 // Decode reads a HEIC image from r and returns it as an image.Image.
@@ -46,6 +47,49 @@ func DecodeConfig(r io.Reader) (image.Config, error) {
 		}
 	} else {
 		_, cfg, err = decode(r, true)
+		if err != nil {
+			return image.Config{}, err
+		}
+	}
+
+	return cfg, nil
+}
+
+// DecodeThumbnail reads a HEIC image from r and returns its embedded thumbnail
+// as an image.Image. If no thumbnail is present, ErrNoThumbnail is returned.
+func DecodeThumbnail(r io.Reader) (image.Image, error) {
+	var err error
+	var img image.Image
+
+	if dynamic && !ForceWasmMode {
+		img, _, err = decodeThumbnailDynamic(r, false)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		img, _, err = decodeThumbnail(r, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return img, nil
+}
+
+// DecodeThumbnailConfig returns the color model and dimensions of the embedded
+// thumbnail without decoding the full image. If no thumbnail is present,
+// ErrNoThumbnail is returned.
+func DecodeThumbnailConfig(r io.Reader) (image.Config, error) {
+	var err error
+	var cfg image.Config
+
+	if dynamic && !ForceWasmMode {
+		_, cfg, err = decodeThumbnailDynamic(r, true)
+		if err != nil {
+			return image.Config{}, err
+		}
+	} else {
+		_, cfg, err = decodeThumbnail(r, true)
 		if err != nil {
 			return image.Config{}, err
 		}

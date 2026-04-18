@@ -3,6 +3,7 @@ package heic
 import (
 	"bytes"
 	_ "embed"
+	"errors"
 	"image"
 	"image/jpeg"
 	"io"
@@ -24,6 +25,9 @@ var testHeic12 []byte
 
 //go:embed testdata/gray.heic
 var testGray []byte
+
+//go:embed testdata/IMG_2736.HEIC
+var testThumb []byte
 
 func TestDecode(t *testing.T) {
 	img, _, err := decode(bytes.NewReader(testHeic), false)
@@ -310,6 +314,83 @@ func testBothWays(t *testing.T, fn func(t *testing.T)) {
 		requireDynamic(t)
 		fn(t)
 	})
+}
+
+func TestDecodeThumbnail(t *testing.T) {
+	img, _, err := decodeThumbnail(bytes.NewReader(testThumb), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := img.Bounds()
+	if b.Dx() == 0 || b.Dy() == 0 {
+		t.Fatalf("thumbnail has zero dimension: %dx%d", b.Dx(), b.Dy())
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecodeThumbnailConfig(t *testing.T) {
+	_, cfg, err := decodeThumbnail(bytes.NewReader(testThumb), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if cfg.Width == 0 || cfg.Height == 0 {
+		t.Fatalf("thumbnail config has zero dimension: %dx%d", cfg.Width, cfg.Height)
+	}
+}
+
+func TestDecodeThumbnailDynamic(t *testing.T) {
+	requireDynamic(t)
+	if versionMajor < 1 || (versionMajor == 1 && versionMinor < 18) {
+		t.Skipf("skipping: libheif %d.%d cannot read iPhone HDR files; need >= 1.18", versionMajor, versionMinor)
+	}
+
+	img, _, err := decodeThumbnailDynamic(bytes.NewReader(testThumb), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := img.Bounds()
+	if b.Dx() == 0 || b.Dy() == 0 {
+		t.Fatalf("thumbnail has zero dimension: %dx%d", b.Dx(), b.Dy())
+	}
+
+	w, err := writeCloser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	err = jpeg.Encode(w, img, nil)
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+func TestDecodeThumbnailMissing(t *testing.T) {
+	// testHeic has no embedded thumbnail — both paths must return ErrNoThumbnail.
+	_, _, err := decodeThumbnail(bytes.NewReader(testHeic), false)
+	if !errors.Is(err, ErrNoThumbnail) {
+		t.Errorf("wasm: got %v, want ErrNoThumbnail", err)
+	}
+
+	if Dynamic() == nil {
+		_, _, err = decodeThumbnailDynamic(bytes.NewReader(testHeic), false)
+		if !errors.Is(err, ErrNoThumbnail) {
+			t.Errorf("dynamic: got %v, want ErrNoThumbnail", err)
+		}
+	}
 }
 
 func BenchmarkDecode(b *testing.B) {
