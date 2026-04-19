@@ -35,6 +35,9 @@ $(LIBDE265_SRC):
 	sed -i '/^target_link_libraries/d' $(LIBDE265_SRC)/libde265/CMakeLists.txt
 	sed -i '/static std::mutex/,+4d' $(LIBDE265_SRC)/libde265/de265.cc
 	sed -i '/std::mutex/d' $(LIBDE265_SRC)/libde265/de265.cc
+	python3 -c "p='$(LIBDE265_SRC)/libde265/CMakeLists.txt'; open(p,'w').write(open(p).read().replace('add_subdirectory (encoder)','if(ENABLE_ENCODER)\nadd_subdirectory (encoder)\nendif()'))"
+	python3 -c "p='$(LIBDE265_SRC)/libde265/threads.h'; t=open(p).read(); open(p,'w').write(t.replace('#include <pthread.h>\n\ntypedef pthread_t        de265_thread;\ntypedef pthread_mutex_t  de265_mutex;\ntypedef pthread_cond_t   de265_cond;','#ifdef __wasi__\ntypedef int de265_thread;\ntypedef int de265_mutex;\ntypedef int de265_cond;\n#else\n#include <pthread.h>\ntypedef pthread_t        de265_thread;\ntypedef pthread_mutex_t  de265_mutex;\ntypedef pthread_cond_t   de265_cond;\n#endif'))"
+	python3 -c "p='$(LIBDE265_SRC)/libde265/threads.cc'; t=open(p).read(); old='int  de265_thread_create(de265_thread* t, void *(*start_routine) (void *), void *arg) { return pthread_create(t,NULL,start_routine,arg); }'; new='#if defined(__wasi__)\nint  de265_thread_create(de265_thread* t, void *(*start_routine) (void *), void *arg) { return 0; }\nvoid de265_thread_join(de265_thread t) {}\nvoid de265_thread_destroy(de265_thread* t) {}\nvoid de265_mutex_init(de265_mutex* m) {}\nvoid de265_mutex_destroy(de265_mutex* m) {}\nvoid de265_mutex_lock(de265_mutex* m) {}\nvoid de265_mutex_unlock(de265_mutex* m) {}\nvoid de265_cond_init(de265_cond* c) {}\nvoid de265_cond_destroy(de265_cond* c) {}\nvoid de265_cond_broadcast(de265_cond* c,de265_mutex* m) {}\nvoid de265_cond_wait(de265_cond* c,de265_mutex* m) {}\nvoid de265_cond_signal(de265_cond* c) {}\n#else\nint  de265_thread_create(de265_thread* t, void *(*start_routine) (void *), void *arg) { return pthread_create(t,NULL,start_routine,arg); }'; open(p,'w').write(t.replace(old,new))"
 	mkdir -p $(LIBDE265_BUILD)
 	test -d $@
 
@@ -94,6 +97,7 @@ $(BIN): $(LIBDE265_BUILD)/libde265/libde265.a $(LIBHEIF_BUILD)/libheif/libheif.a
 		-Wl,--export=malloc \
 		-Wl,--export=free \
 		-Wl,--export=decode \
+		-Wl,--export=decode_thumbnail \
 		-mexec-model=reactor \
 		-mnontrapping-fptoint \
 		-I${LIBHEIF_SRC}/libheif/api \

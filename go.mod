@@ -1,4 +1,4 @@
-module github.com/gen2brain/heic
+module github.com/Rosca75/heic
 
 go 1.25
 

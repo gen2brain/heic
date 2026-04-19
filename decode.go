@@ -22,13 +22,21 @@ import (
 var heifWasm []byte
 
 func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
+	return decodeWASM(r, configOnly, "decode", false)
+}
+
+func decodeThumbnail(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
+	return decodeWASM(r, configOnly, "decode_thumbnail", true)
+}
+
+func decodeWASM(r io.Reader, configOnly bool, exportName string, thumbnail bool) (image.Image, image.Config, error) {
 	initOnce()
 
 	var cfg image.Config
 	var data []byte
 
 	ctx := context.Background()
-	mod, err := rt.InstantiateModule(ctx, cm, mc)
+	mod, err := rt.InstantiateModule(ctx, cm, mc.WithName(""))
 	if err != nil {
 		return nil, cfg, err
 	}
@@ -37,7 +45,7 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 
 	_alloc := mod.ExportedFunction("malloc")
 	_free := mod.ExportedFunction("free")
-	_decode := mod.ExportedFunction("decode")
+	_decode := mod.ExportedFunction(exportName)
 
 	if configOnly {
 		data, err = io.ReadAll(io.LimitReader(r, heifMaxHeaderSize))
@@ -82,6 +90,9 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 		return nil, cfg, fmt.Errorf("decode: %w", err)
 	}
 
+	if thumbnail && res[0] == 2 {
+		return nil, cfg, ErrNoThumbnail
+	}
 	if res[0] == 0 {
 		return nil, cfg, ErrDecode
 	}
@@ -183,6 +194,9 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 		return nil, cfg, fmt.Errorf("decode: %w", err)
 	}
 
+	if thumbnail && res[0] == 2 {
+		return nil, cfg, ErrNoThumbnail
+	}
 	if res[0] == 0 {
 		return nil, cfg, ErrDecode
 	}

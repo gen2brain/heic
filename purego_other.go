@@ -17,6 +17,10 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	return nil, image.Config{}, dynamicErr
 }
 
+func decodeThumbnailDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
+	return nil, image.Config{}, dynamicErr
+}
+
 func loadLibrary() (uintptr, error) {
 	return 0, dynamicErr
 }
