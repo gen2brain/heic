@@ -127,6 +127,18 @@ int __cxa_allocate_exception(int a) {
 void __cxa_throw(int a, int b, int c) {
 }
 
+// wasi has no temp directories; the decoder never reaches the temp-file path.
+int mkstemp(char *t) {
+    return -1;
+}
+
+// libde265 worker threads can't run (pthreads are stubbed), so decode them in
+// the calling thread by making the thread-pool startup a no-op (linked via
+// -Wl,--wrap=de265_start_worker_threads).
+int __wrap_de265_start_worker_threads(void *ctx, int n) {
+    return 0;
+}
+
 int pthread_create(int a, int b, int c, int d) {
     return 0;
 }

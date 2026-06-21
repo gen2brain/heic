@@ -1,5 +1,5 @@
-LIBHEIF_VERSION = v1.18.2
-LIBDE265_VERSION = v1.0.15
+LIBHEIF_VERSION = v1.23.0
+LIBDE265_VERSION = v1.1.1
 
 LIBHEIF_SRC = $(PWD)/libheif
 LIBHEIF_BUILD = $(LIBHEIF_SRC)/build
@@ -11,7 +11,7 @@ WASI_SDK_PATH = /opt/wasi-sdk
 export CC = $(WASI_SDK_PATH)/bin/clang --sysroot=$(WASI_SDK_PATH)/share/wasi-sysroot
 export CXX = $(WASI_SDK_PATH)/bin/clang++ --sysroot=$(WASI_SDK_PATH)/share/wasi-sysroot
 
-CMAKE_TOOLCHAIN_FILE=$(WASI_SDK_PATH)/share/cmake/wasi-sdk.cmake
+CMAKE_TOOLCHAIN_FILE=$(WASI_SDK_PATH)/share/cmake/wasi-sdk-p1.cmake
 
 BIN := heif.wasm
 
@@ -19,22 +19,11 @@ all: $(BIN)
 
 $(LIBHEIF_SRC):
 	git clone -b $(LIBHEIF_VERSION) --depth 1 --recursive --jobs `nproc` https://github.com/strukturag/libheif
-	sed -i '/HeifFile::read_from_file/,+15d' $(LIBHEIF_SRC)/libheif/file.cc
-	sed -i '/HeifFile::read_from_file/d' $(LIBHEIF_SRC)/libheif/file.cc
-	sed -i '/heif_file_writer_write(/,+13d' $(LIBHEIF_SRC)/libheif/api/libheif/heif.cc
-	sed -i '/heif_file_writer_write/d' $(LIBHEIF_SRC)/libheif/api/libheif/heif.cc
-	sed -i '/target_colorspace = heif_colorspace_RGB/d' $(LIBHEIF_SRC)/libheif/context.cc
-	sed -i '/de265_start_worker_threads/d' $(LIBHEIF_SRC)/libheif/plugins/decoder_libde265.cc
-	sed -i '227i return get_decoder_plugin_libde265();' $(LIBHEIF_SRC)/libheif/plugin_registry.cc
 	mkdir -p $(LIBHEIF_BUILD)
 	test -d $@
 
 $(LIBDE265_SRC):
 	git clone -b $(LIBDE265_VERSION) --depth 1 --recursive --jobs `nproc` https://github.com/strukturag/libde265
-	sed -i '/^find_package(Threads/d' $(LIBDE265_SRC)/CMakeLists.txt
-	sed -i '/^target_link_libraries/d' $(LIBDE265_SRC)/libde265/CMakeLists.txt
-	sed -i '/static std::mutex/,+4d' $(LIBDE265_SRC)/libde265/de265.cc
-	sed -i '/std::mutex/d' $(LIBDE265_SRC)/libde265/de265.cc
 	mkdir -p $(LIBDE265_BUILD)
 	test -d $@
 
@@ -63,6 +52,7 @@ $(LIBHEIF_BUILD)/libheif/libheif.a: $(LIBHEIF_SRC)
 		-DENABLE_PLUGIN_LOADING=0 \
 		-DWITH_LIBDE265=1 \
 		-DWITH_X265=0 \
+		-DWITH_X264=0 \
 		-DWITH_KVAZAAR=0 \
 		-DWITH_DAV1D=0 \
 		-DWITH_AOM_DECODER=0 \
@@ -80,12 +70,12 @@ $(LIBHEIF_BUILD)/libheif/libheif.a: $(LIBHEIF_SRC)
 		-DENABLE_MULTITHREADING_SUPPORT=0 \
 		-DLIBDE265_INCLUDE_DIR=$(LIBDE265_SRC) \
 		-DLIBDE265_LIBRARY=-L$(LIBDE265_BUILD)/libde265 \
-		-DCMAKE_C_FLAGS="-D__EMSCRIPTEN_STANDALONE_WASM__=1" \
-		-DCMAKE_CXX_FLAGS="-D__EMSCRIPTEN_STANDALONE_WASM__=1" \
+		-DCMAKE_C_FLAGS="-D__EMSCRIPTEN_STANDALONE_WASM__=1 -include $(PWD)/wasi-compat.h" \
+		-DCMAKE_CXX_FLAGS="-D__EMSCRIPTEN_STANDALONE_WASM__=1 -include $(PWD)/wasi-compat.h" \
 		-DCMAKE_TOOLCHAIN_FILE=$(CMAKE_TOOLCHAIN_FILE)
 
 	cd $(LIBHEIF_BUILD); \
-	$(MAKE) -j$(shell nproc) VERBOSE=1
+	$(MAKE) -j$(shell nproc) heif VERBOSE=1
 
 $(BIN): $(LIBDE265_BUILD)/libde265/libde265.a $(LIBHEIF_BUILD)/libheif/libheif.a
 	$(CC) \
@@ -94,6 +84,7 @@ $(BIN): $(LIBDE265_BUILD)/libde265/libde265.a $(LIBHEIF_BUILD)/libheif/libheif.a
 		-Wl,--export=malloc \
 		-Wl,--export=free \
 		-Wl,--export=decode \
+		-Wl,--wrap=de265_start_worker_threads \
 		-mexec-model=reactor \
 		-mnontrapping-fptoint \
 		-I${LIBHEIF_SRC}/libheif/api \
