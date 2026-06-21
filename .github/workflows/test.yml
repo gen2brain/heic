@@ -21,21 +21,12 @@ jobs:
     - name: "[linux] install libheif"
       if: runner.os == 'Linux'
       run: sudo apt-get update && sudo apt-get install -y libheif-dev libheif1 libheif-plugin-libde265
-    - name: "[windows] cache vcpkg artifacts"
-      if: runner.os == 'Windows'
-      uses: actions/cache@v4
-      id: vcpkg-cache
-      with:
-        path: C:\Users\runneradmin\AppData\Local\vcpkg\archives
-        key: vcpkg-libheif-v1
     - name: "[windows] install libheif"
       if: runner.os == 'Windows'
-      run: |
-        vcpkg install libheif:x64-windows
-        vcpkg integrate install
-        dir C:/vcpkg/installed/x64-windows/bin
-        Get-ChildItem -Path "C:\vcpkg\installed\x64-windows\bin\*.dll" | Copy-Item -Destination .
-        dir
+      run: C:\msys64\usr\bin\pacman -Sy --noconfirm --needed mingw-w64-x86_64-libheif
+    - name: "[windows] add libheif to PATH"
+      if: runner.os == 'Windows'
+      run: Add-Content $env:GITHUB_PATH "C:\msys64\mingw64\bin"
     - name: Test
       run: go test -v -bench=. -benchtime=1x
 

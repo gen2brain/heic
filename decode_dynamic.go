@@ -187,12 +187,6 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 }
 
 func init() {
-	if runtime.GOOS == "windows" {
-		dynamic = false
-		dynamicErr = fmt.Errorf("dynamic library loading not supported on windows yet; see https://github.com/gen2brain/heic/issues/11")
-		return
-	}
-
 	var err error
 	defer func() {
 		if r := recover(); r != nil {
@@ -246,22 +240,18 @@ var (
 )
 
 var (
-	_heifGetVersionNumberMajor                     func() uint32
-	_heifGetVersionNumberMinor                     func() uint32
-	_heifCheckFiletype                             func(*uint8, uint64) int
-	_heifContextAlloc                              func() *heifContext
-	_heifContextFree                               func(*heifContext)
-	_heifContextReadFromMemoryWithoutCopy          func(*heifContext, *uint8, uint64, *byte) uintptr
-	_heifContextGetPrimaryImageHandle              func(*heifContext, **heifImageHandle) uintptr
-	_heifImageHandleGetWidth                       func(*heifImageHandle) int
-	_heifImageHandleGetHeight                      func(*heifImageHandle) int
-	_heifImageHandleIsPremultipliedAlpha           func(*heifImageHandle) int
-	_heifImageHandleGetPreferredDecodingColorspace func(*heifImageHandle, *int, *int) uintptr
-	_heifImageHandleRelease                        func(*heifImageHandle)
-	_heifDecodingOptionsAlloc                      func() *heifDecodingOptions
-	_heifDecodingOptionsFree                       func(*heifDecodingOptions)
-	_heifDecodeImage                               func(*heifImageHandle, **heifImage, int, int, *heifDecodingOptions) uintptr
-	_heifImageGetPlaneReadonly                     func(*heifImage, int, *int) *uint8
+	_heifGetVersionNumberMajor           func() uint32
+	_heifGetVersionNumberMinor           func() uint32
+	_heifCheckFiletype                   func(*uint8, uint64) int
+	_heifContextAlloc                    func() *heifContext
+	_heifContextFree                     func(*heifContext)
+	_heifImageHandleGetWidth             func(*heifImageHandle) int
+	_heifImageHandleGetHeight            func(*heifImageHandle) int
+	_heifImageHandleIsPremultipliedAlpha func(*heifImageHandle) int
+	_heifImageHandleRelease              func(*heifImageHandle)
+	_heifDecodingOptionsAlloc            func() *heifDecodingOptions
+	_heifDecodingOptionsFree             func(*heifDecodingOptions)
+	_heifImageGetPlaneReadonly           func(*heifImage, int, *int) *uint8
 )
 
 func heifGetVersionNumberMajor() int {
@@ -284,18 +274,6 @@ func heifContextFree(ctx *heifContext) {
 	_heifContextFree(ctx)
 }
 
-func heifContextReadFromMemoryWithoutCopy(ctx *heifContext, data []byte) heifError {
-	ret := _heifContextReadFromMemoryWithoutCopy(ctx, &data[0], uint64(len(data)), nil)
-
-	return *(*heifError)(unsafe.Pointer(&ret))
-}
-
-func heifContextGetPrimaryImageHandle(ctx *heifContext, handle **heifImageHandle) heifError {
-	ret := _heifContextGetPrimaryImageHandle(ctx, handle)
-
-	return *(*heifError)(unsafe.Pointer(&ret))
-}
-
 func heifImageHandleGetWidth(handle *heifImageHandle) int {
 	return _heifImageHandleGetWidth(handle)
 }
@@ -310,12 +288,6 @@ func heifImageHandleIsPremultipliedAlpha(handle *heifImageHandle) bool {
 	return ret != 0
 }
 
-func heifImageHandleGetPreferredDecodingColorspace(handle *heifImageHandle, colorspace *int, chroma *int) heifError {
-	ret := _heifImageHandleGetPreferredDecodingColorspace(handle, colorspace, chroma)
-
-	return *(*heifError)(unsafe.Pointer(&ret))
-}
-
 func heifImageHandleRelease(handle *heifImageHandle) {
 	_heifImageHandleRelease(handle)
 }
@@ -326,12 +298,6 @@ func heifDecodingOptionsAlloc() *heifDecodingOptions {
 
 func heifDecodingOptionsFree(options *heifDecodingOptions) {
 	_heifDecodingOptionsFree(options)
-}
-
-func heifDecodeImage(handle *heifImageHandle, img **heifImage, colorspace int, chroma int, options *heifDecodingOptions) heifError {
-	ret := _heifDecodeImage(handle, img, colorspace, chroma, options)
-
-	return *(*heifError)(unsafe.Pointer(&ret))
 }
 
 func heifImageGetPlaneReadonly(img *heifImage, channel int, stride *int) *uint8 {

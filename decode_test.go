@@ -101,9 +101,6 @@ var inCI, _ = strconv.ParseBool(os.Getenv("CI"))
 
 func requireDynamic(t testing.TB) {
 	if err := Dynamic(); err != nil {
-		if runtime.GOOS == "windows" {
-			t.Skip("skipping dynamic library test on Windows in CI; it doesn't work yet: https://github.com/gen2brain/heic/issues/11")
-		}
 		if inCI {
 			t.Fatalf("libheif should be available in CI on %s, but got: %v", runtime.GOOS, err)
 		}
