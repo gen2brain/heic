@@ -1,4 +1,4 @@
-//go:build (linux || darwin || windows) && !(nodynamic || arm || 386 || mips || mipsle)
+//go:build (linux || darwin || windows) && !(nodynamic || arm || 386 || mips || mipsle || loong64)
 
 package heic
 
