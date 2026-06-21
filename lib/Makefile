@@ -30,7 +30,7 @@ $(LIBDE265_SRC):
 $(LIBDE265_BUILD)/libde265/libde265.a: $(LIBDE265_SRC)
 	cd $(LIBDE265_BUILD); \
 	cmake $(LIBDE265_SRC) \
-		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_BUILD_TYPE=MinSizeRel \
 		-DBUILD_SHARED_LIBS=0 \
 		-DENABLE_SDL=0 \
 		-DENABLE_DECODER=0 \
@@ -46,7 +46,7 @@ $(LIBDE265_BUILD)/libde265/libde265.a: $(LIBDE265_SRC)
 $(LIBHEIF_BUILD)/libheif/libheif.a: $(LIBHEIF_SRC)
 	cd $(LIBHEIF_BUILD); \
 	cmake $(LIBHEIF_SRC) \
-		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_BUILD_TYPE=MinSizeRel \
 		-DBUILD_SHARED_LIBS=0 \
 		-DBUILD_TESTING=0 \
 		-DENABLE_PLUGIN_LOADING=0 \
@@ -79,11 +79,12 @@ $(LIBHEIF_BUILD)/libheif/libheif.a: $(LIBHEIF_SRC)
 
 $(BIN): $(LIBDE265_BUILD)/libde265/libde265.a $(LIBHEIF_BUILD)/libheif/libheif.a
 	$(CC) \
-		-O3 \
+		-Oz \
 		-Wl,--no-entry \
 		-Wl,--export=malloc \
 		-Wl,--export=free \
 		-Wl,--export=decode \
+		-Wl,--strip-debug \
 		-Wl,--wrap=de265_start_worker_threads \
 		-mexec-model=reactor \
 		-mnontrapping-fptoint \
