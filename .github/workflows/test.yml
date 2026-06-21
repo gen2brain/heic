@@ -20,7 +20,7 @@ jobs:
       run: brew install libheif
     - name: "[linux] install libheif"
       if: runner.os == 'Linux'
-      run: sudo apt-get update && sudo apt-get install -y libheif-dev libheif1
+      run: sudo apt-get update && sudo apt-get install -y libheif-dev libheif1 libheif-plugin-libde265
     - name: "[windows] cache vcpkg artifacts"
       if: runner.os == 'Windows'
       uses: actions/cache@v4
