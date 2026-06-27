@@ -3,6 +3,7 @@
 package heic
 
 import (
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
@@ -186,6 +187,54 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	return img, cfg, nil
 }
 
+// exifDynamic returns the raw TIFF/EXIF bytes from the HEIC data, or nil when absent.
+func exifDynamic(data []byte) ([]byte, error) {
+	if heifCheckFiletype(data) != heifFiletypeYesSupported {
+		return nil, ErrDecode
+	}
+
+	ctx := heifContextAlloc()
+	defer heifContextFree(ctx)
+
+	if e := heifContextReadFromMemoryWithoutCopy(ctx, data); e.Code != 0 {
+		return nil, ErrDecode
+	}
+
+	handle := new(heifImageHandle)
+	if e := heifContextGetPrimaryImageHandle(ctx, &handle); e.Code != 0 {
+		return nil, ErrDecode
+	}
+	defer heifImageHandleRelease(handle)
+
+	var id uint32
+	if heifImageHandleGetListOfMetadataBlockIDs(handle, "Exif", &id, 1) < 1 {
+		return nil, nil
+	}
+
+	size := heifImageHandleGetMetadataSize(handle, id)
+	if size <= 4 {
+		return nil, nil
+	}
+
+	buf := make([]byte, size)
+	if e := heifImageHandleGetMetadata(handle, id, &buf[0]); e.Code != 0 {
+		return nil, ErrDecode
+	}
+
+	// HEIF stores a 4-byte big-endian offset to the TIFF header before the EXIF data.
+	start := 4 + int(binary.BigEndian.Uint32(buf[0:4]))
+	if start >= len(buf) {
+		return nil, nil
+	}
+
+	tiff := make([]byte, len(buf)-start)
+	copy(tiff, buf[start:])
+
+	runtime.KeepAlive(data)
+
+	return tiff, nil
+}
+
 func init() {
 	var err error
 	defer func() {
@@ -227,6 +276,9 @@ func init() {
 	purego.RegisterLibFunc(&_heifDecodingOptionsFree, libheif, "heif_decoding_options_free")
 	purego.RegisterLibFunc(&_heifDecodeImage, libheif, "heif_decode_image")
 	purego.RegisterLibFunc(&_heifImageGetPlaneReadonly, libheif, "heif_image_get_plane_readonly")
+	purego.RegisterLibFunc(&_heifImageHandleGetListOfMetadataBlockIDs, libheif, "heif_image_handle_get_list_of_metadata_block_IDs")
+	purego.RegisterLibFunc(&_heifImageHandleGetMetadataSize, libheif, "heif_image_handle_get_metadata_size")
+	purego.RegisterLibFunc(&_heifImageHandleGetMetadata, libheif, "heif_image_handle_get_metadata")
 }
 
 var (
@@ -252,7 +304,18 @@ var (
 	_heifDecodingOptionsAlloc            func() *heifDecodingOptions
 	_heifDecodingOptionsFree             func(*heifDecodingOptions)
 	_heifImageGetPlaneReadonly           func(*heifImage, int, *int) *uint8
+
+	_heifImageHandleGetListOfMetadataBlockIDs func(*heifImageHandle, string, *uint32, int) int
+	_heifImageHandleGetMetadataSize           func(*heifImageHandle, uint32) uint64
 )
+
+func heifImageHandleGetListOfMetadataBlockIDs(handle *heifImageHandle, typeFilter string, ids *uint32, count int) int {
+	return _heifImageHandleGetListOfMetadataBlockIDs(handle, typeFilter, ids, count)
+}
+
+func heifImageHandleGetMetadataSize(handle *heifImageHandle, id uint32) int {
+	return int(_heifImageHandleGetMetadataSize(handle, id))
+}
 
 func heifGetVersionNumberMajor() int {
 	return int(_heifGetVersionNumberMajor())

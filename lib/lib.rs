@@ -66,3 +66,29 @@ pub extern "C" fn decode(in_ptr: *const u8, in_len: i32, config_only: i32, info:
     unsafe { std::ptr::copy_nonoverlapping(out.data.as_ptr(), p, size) };
     p
 }
+
+#[no_mangle]
+pub extern "C" fn exif(in_ptr: *const u8, in_len: i32, out_len: *mut i32) -> *mut u8 {
+    let input = unsafe { std::slice::from_raw_parts(in_ptr, in_len as usize) };
+
+    let exif = match DecoderConfig::new().extract_exif(input) {
+        Ok(Some(e)) => e,
+        _ => {
+            unsafe { *out_len = 0 };
+            return std::ptr::null_mut();
+        }
+    };
+
+    let size = exif.len();
+    let p = malloc(size);
+    if p.is_null() {
+        unsafe { *out_len = 0 };
+        return p;
+    }
+
+    unsafe {
+        std::ptr::copy_nonoverlapping(exif.as_ptr(), p, size);
+        *out_len = size as i32;
+    }
+    p
+}

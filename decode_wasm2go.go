@@ -84,6 +84,44 @@ func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {
 	return img, cfg, nil
 }
 
+// exifWasm returns the raw TIFF/EXIF bytes from the HEIC data, or nil when absent.
+func exifWasm(data []byte) ([]byte, error) {
+	mod := modPool.Get().(*module)
+	defer modPool.Put(mod)
+
+	inPtr := mod.Xmalloc(int32(len(data)))
+	if inPtr == 0 {
+		return nil, ErrMemWrite
+	}
+	defer mod.Xfree(inPtr)
+	if !mod.write(inPtr, data) {
+		return nil, ErrMemWrite
+	}
+
+	lenPtr := mod.Xmalloc(4)
+	if lenPtr == 0 {
+		return nil, ErrMemWrite
+	}
+	defer mod.Xfree(lenPtr)
+
+	out := mod.Xexif(inPtr, int32(len(data)), lenPtr)
+	n := load32(mod.memory[lenPtr:])
+	if out == 0 || n == 0 {
+		return nil, nil
+	}
+	defer mod.Xfree(out)
+
+	b, ok := mod.read(out, int32(n))
+	if !ok {
+		return nil, ErrMemRead
+	}
+
+	tiff := make([]byte, len(b))
+	copy(tiff, b)
+
+	return tiff, nil
+}
+
 func (m *module) write(ptr int32, data []byte) bool {
 	if ptr < 0 || int(ptr)+len(data) > len(m.memory) {
 		return false
