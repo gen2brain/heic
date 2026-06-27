@@ -1,8 +1,9 @@
 // Package heic implements an HEIC image decoder based on the pure-Rust heic
-// crate compiled to WASM, or libheif/libde265 via a dynamic library.
+// crate compiled to WASM (run via wazero, or transpiled with the wasm2go build
+// tag), or libheif/libde265 via a dynamic library.
 package heic
 
-//go:generate make -C lib wasm2go
+//go:generate make -C lib
 
 import (
 	"errors"

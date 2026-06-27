@@ -1,3 +1,5 @@
+//go:build wasm2go
+
 package heic
 
 import (
