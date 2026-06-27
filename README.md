@@ -11,4 +11,4 @@ The library will first try to use a [libheif](https://github.com/strukturag/libh
 ### Build tags
 
 * `nodynamic` - do not use dynamic/shared library (use only WASM)
-* `wasm2go` - transpile the WASM to Go with [wasm2go](https://github.com/ncruces/wasm2go) instead of running it with wazero (for platforms wazero does not support, e.g. Haiku)
+* `wasm2go` - transpile the WASM to Go with [wasm2go](https://github.com/ncruces/wasm2go) instead of running it with wazero
