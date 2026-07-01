@@ -45,20 +45,7 @@ type Exif struct {
 // DecodeExif reads the EXIF metadata from a HEIC image, or returns ErrNoExif if there is none.
 // Orientation is already applied by the decoder, so Exif.Orientation is informational.
 func DecodeExif(r io.Reader) (*Exif, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("heic: read: %w", err)
-	}
-
-	var tiff []byte
-	if dynamic && !ForceWasmMode {
-		tiff, err = exifDynamic(data)
-	} else {
-		tiff, err = exifWasm(data)
-	}
-	if err != nil {
-		return nil, err
-	}
+	tiff := exifPayload(r)
 	if tiff == nil {
 		return nil, ErrNoExif
 	}

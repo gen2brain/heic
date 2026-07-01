@@ -25,7 +25,6 @@ type module struct {
 	alloc  api.Function
 	free   api.Function
 	decode api.Function
-	exif   api.Function
 }
 
 var modPool = sync.Pool{New: func() any { return newModule() }}
@@ -43,61 +42,7 @@ func newModule() *module {
 		alloc:  mod.ExportedFunction("malloc"),
 		free:   mod.ExportedFunction("free"),
 		decode: mod.ExportedFunction("decode"),
-		exif:   mod.ExportedFunction("exif"),
 	}
-}
-
-// exifWasm returns the raw TIFF/EXIF bytes from the HEIC data, or nil when absent.
-func exifWasm(data []byte) ([]byte, error) {
-	m := modPool.Get().(*module)
-	defer modPool.Put(m)
-
-	ctx := context.Background()
-	mem := m.mod.Memory()
-
-	res, err := m.alloc.Call(ctx, uint64(len(data)))
-	if err != nil {
-		return nil, fmt.Errorf("alloc: %w", err)
-	}
-	inPtr := res[0]
-	defer m.free.Call(ctx, inPtr)
-
-	if !mem.Write(uint32(inPtr), data) {
-		return nil, ErrMemWrite
-	}
-
-	res, err = m.alloc.Call(ctx, 4)
-	if err != nil {
-		return nil, fmt.Errorf("alloc: %w", err)
-	}
-	lenPtr := res[0]
-	defer m.free.Call(ctx, lenPtr)
-
-	res, err = m.exif.Call(ctx, inPtr, uint64(len(data)), lenPtr)
-	if err != nil {
-		return nil, fmt.Errorf("exif: %w", err)
-	}
-
-	n, ok := mem.ReadUint32Le(uint32(lenPtr))
-	if !ok {
-		return nil, ErrMemRead
-	}
-
-	outPtr := res[0]
-	if outPtr == 0 || n == 0 {
-		return nil, nil
-	}
-	defer m.free.Call(ctx, outPtr)
-
-	out, ok := mem.Read(uint32(outPtr), n)
-	if !ok {
-		return nil, ErrMemRead
-	}
-
-	tiff := make([]byte, len(out))
-	copy(tiff, out)
-
-	return tiff, nil
 }
 
 func decode(r io.Reader, configOnly bool) (image.Image, image.Config, error) {

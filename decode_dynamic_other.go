@@ -7,12 +7,7 @@ var (
 	_heifContextGetPrimaryImageHandle              func(*heifContext, **heifImageHandle) heifError
 	_heifImageHandleGetPreferredDecodingColorspace func(*heifImageHandle, *int, *int) heifError
 	_heifDecodeImage                               func(*heifImageHandle, **heifImage, int, int, *heifDecodingOptions) heifError
-	_heifImageHandleGetMetadata                    func(*heifImageHandle, uint32, *uint8) heifError
 )
-
-func heifImageHandleGetMetadata(handle *heifImageHandle, id uint32, out *uint8) heifError {
-	return _heifImageHandleGetMetadata(handle, id, out)
-}
 
 func heifContextReadFromMemoryWithoutCopy(ctx *heifContext, data []byte) heifError {
 	return _heifContextReadFromMemoryWithoutCopy(ctx, &data[0], uint64(len(data)), nil)
