@@ -8,7 +8,14 @@ var (
 	_heifContextGetPrimaryImageHandle              func(*heifError, *heifContext, **heifImageHandle) uintptr
 	_heifImageHandleGetPreferredDecodingColorspace func(*heifError, *heifImageHandle, *int, *int) uintptr
 	_heifDecodeImage                               func(*heifError, *heifImageHandle, **heifImage, int, int, *heifDecodingOptions) uintptr
+	_heifTrackDecodeNextImage                      func(*heifError, *heifTrack, **heifImage, int, int, *heifDecodingOptions) uintptr
 )
+
+func heifTrackDecodeNextImage(track *heifTrack, img **heifImage, colorspace int, chroma int, options *heifDecodingOptions) heifError {
+	var e heifError
+	_heifTrackDecodeNextImage(&e, track, img, colorspace, chroma, options)
+	return e
+}
 
 func heifContextReadFromMemoryWithoutCopy(ctx *heifContext, data []byte) heifError {
 	var e heifError

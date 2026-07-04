@@ -38,6 +38,21 @@ func Decode(r io.Reader) (image.Image, error) {
 	return img, nil
 }
 
+// HEIC holds the decoded frames of a HEIC image sequence and their per-frame delays in seconds.
+type HEIC struct {
+	Image []image.Image
+	Delay []float64
+}
+
+// DecodeAll reads a HEIC image sequence from r and returns all frames; a still image yields one frame.
+func DecodeAll(r io.Reader) (*HEIC, error) {
+	if dynamic && !ForceWasmMode {
+		return decodeDynamicAll(r)
+	}
+
+	return decodeWasmAll(r)
+}
+
 // DecodeConfig returns the color model and dimensions of a HEIC image without decoding the entire image.
 func DecodeConfig(r io.Reader) (image.Config, error) {
 	var err error

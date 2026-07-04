@@ -25,6 +25,37 @@ var testHeic12 []byte
 //go:embed testdata/gray.heic
 var testGray []byte
 
+//go:embed testdata/anim.heic
+var testAnim []byte
+
+func TestDecodeAll(t *testing.T) {
+	defer func() { ForceWasmMode = false }()
+
+	for _, wasm := range []bool{false, true} {
+		ForceWasmMode = wasm
+
+		h, err := DecodeAll(bytes.NewReader(testAnim))
+		if err != nil {
+			t.Fatalf("wasm=%v: %v", wasm, err)
+		}
+
+		if len(h.Image) != 17 || len(h.Delay) != 17 {
+			t.Fatalf("wasm=%v: frames=%d delays=%d, want 17", wasm, len(h.Image), len(h.Delay))
+		}
+
+		b := h.Image[0].Bounds()
+		if b.Dx() != 176 || b.Dy() != 128 {
+			t.Fatalf("wasm=%v: frame dims %dx%d, want 176x128", wasm, b.Dx(), b.Dy())
+		}
+
+		for i, d := range h.Delay {
+			if d < 0.079 || d > 0.081 {
+				t.Fatalf("wasm=%v: delay[%d]=%v, want ~0.08s", wasm, i, d)
+			}
+		}
+	}
+}
+
 func TestDecode(t *testing.T) {
 	img, _, err := decode(bytes.NewReader(testHeic), false)
 	if err != nil {
