@@ -6,8 +6,11 @@ package heic
 //go:generate make -C lib
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"image"
+	"image/color"
 	"io"
 )
 
@@ -18,24 +21,29 @@ var (
 	ErrDecode   = errors.New("heic: decode failed")
 )
 
-// Decode reads a HEIC image from r and returns it as an image.Image.
+// Decode reads a HEIC image from r; for an image sequence it returns the first frame.
 func Decode(r io.Reader) (image.Image, error) {
-	var err error
-	var img image.Image
-
-	if dynamic && !ForceWasmMode {
-		img, _, err = decodeDynamic(r, false)
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		img, _, err = decode(r, false)
-		if err != nil {
-			return nil, err
-		}
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("heic: read: %w", err)
 	}
 
-	return img, nil
+	if _, ok := parseSequence(data); ok {
+		h, err := DecodeAll(bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+
+		return h.Image[0], nil
+	}
+
+	if dynamic && !ForceWasmMode {
+		img, _, err := decodeDynamic(bytes.NewReader(data), false)
+		return img, err
+	}
+
+	img, _, err := decode(bytes.NewReader(data), false)
+	return img, err
 }
 
 // HEIC holds the decoded frames of a HEIC image sequence and their per-frame delays in seconds.
@@ -55,19 +63,23 @@ func DecodeAll(r io.Reader) (*HEIC, error) {
 
 // DecodeConfig returns the color model and dimensions of a HEIC image without decoding the entire image.
 func DecodeConfig(r io.Reader) (image.Config, error) {
-	var err error
-	var cfg image.Config
+	data, err := io.ReadAll(io.LimitReader(r, heifMaxHeaderSize))
+	if err != nil {
+		return image.Config{}, fmt.Errorf("heic: read: %w", err)
+	}
 
+	if info, ok := parseSequence(data); ok {
+		return image.Config{ColorModel: color.NRGBAModel, Width: info.width, Height: info.height}, nil
+	}
+
+	var cfg image.Config
 	if dynamic && !ForceWasmMode {
-		_, cfg, err = decodeDynamic(r, true)
-		if err != nil {
-			return image.Config{}, err
-		}
+		_, cfg, err = decodeDynamic(bytes.NewReader(data), true)
 	} else {
-		_, cfg, err = decode(r, true)
-		if err != nil {
-			return image.Config{}, err
-		}
+		_, cfg, err = decode(bytes.NewReader(data), true)
+	}
+	if err != nil {
+		return image.Config{}, err
 	}
 
 	return cfg, nil
@@ -139,5 +151,7 @@ func yCbCrSize(r image.Rectangle, subsampleRatio image.YCbCrSubsampleRatio) (w, 
 }
 
 func init() {
-	image.RegisterFormat("heic", "????ftypheic", Decode, DecodeConfig)
+	for _, brand := range []string{"heic", "heix", "hevc", "hevx", "msf1"} {
+		image.RegisterFormat("heic", "????ftyp"+brand, Decode, DecodeConfig)
+	}
 }
