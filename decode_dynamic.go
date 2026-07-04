@@ -246,7 +246,6 @@ func registerSequence() {
 		}
 	}()
 
-	purego.RegisterLibFunc(&_heifContextHasSequence, libheif, "heif_context_has_sequence")
 	purego.RegisterLibFunc(&_heifContextNumberOfSequenceTracks, libheif, "heif_context_number_of_sequence_tracks")
 	purego.RegisterLibFunc(&_heifContextGetTrackIds, libheif, "heif_context_get_track_ids")
 	purego.RegisterLibFunc(&_heifContextGetTrack, libheif, "heif_context_get_track")
@@ -287,7 +286,6 @@ var (
 	_heifDecodingOptionsFree             func(*heifDecodingOptions)
 	_heifImageGetPlaneReadonly           func(*heifImage, int, *int) *uint8
 
-	_heifContextHasSequence            func(*heifContext) int
 	_heifContextNumberOfSequenceTracks func(*heifContext) int
 	_heifContextGetTrackIds            func(*heifContext, *uint32)
 	_heifContextGetTrack               func(*heifContext, uint32) *heifTrack
@@ -350,10 +348,6 @@ func heifImageGetPlaneReadonly(img *heifImage, channel int, stride *int) *uint8 
 	return _heifImageGetPlaneReadonly(img, channel, stride)
 }
 
-func heifContextHasSequence(ctx *heifContext) bool {
-	return _heifContextHasSequence(ctx) != 0
-}
-
 func heifContextNumberOfSequenceTracks(ctx *heifContext) int {
 	return _heifContextNumberOfSequenceTracks(ctx)
 }
@@ -401,16 +395,21 @@ func decodeDynamicAll(r io.Reader) (*HEIC, error) {
 		return nil, fmt.Errorf("read: %w", err)
 	}
 
-	if hasSequence {
-		ctx := heifContextAlloc()
-		defer heifContextFree(ctx)
+	if _, ok := parseSequence(data); ok {
+		if hasSequence {
+			ctx := heifContextAlloc()
+			defer heifContextFree(ctx)
 
-		if e := heifContextReadFromMemoryWithoutCopy(ctx, data); e.Code == 0 && heifContextHasSequence(ctx) {
-			if h, ok := decodeSequenceDynamic(ctx); ok {
-				runtime.KeepAlive(data)
-				return h, nil
+			if e := heifContextReadFromMemoryWithoutCopy(ctx, data); e.Code == 0 {
+				if h, ok := decodeSequenceDynamic(ctx); ok {
+					runtime.KeepAlive(data)
+					return h, nil
+				}
 			}
 		}
+
+		// libheif has no sequence support; decode the sequence via WASM.
+		return decodeWasmAll(bytes.NewReader(data))
 	}
 
 	img, _, err := decodeDynamic(bytes.NewReader(data), false)
