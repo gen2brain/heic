@@ -136,7 +136,7 @@ func parseTrak(trak, data []byte) (*seqInfo, bool) {
 		case "stsd":
 			parseStsd(p, info)
 		case "stsz":
-			sizes = parseStsz(p)
+			sizes = parseStsz(p, len(data))
 		case "stco":
 			chunks = parseOffsets(p, 4)
 		case "co64":
@@ -144,7 +144,7 @@ func parseTrak(trak, data []byte) (*seqInfo, bool) {
 		case "stsc":
 			stsc = parseStsc(p)
 		case "stts":
-			info.durations = parseStts(p)
+			info.durations = parseStts(p, len(data))
 		}
 		return true
 	})
@@ -226,13 +226,27 @@ func parseHvcC(b []byte) (nalLenSize int, params [][]byte, ok bool) {
 	return nalLenSize, params, true
 }
 
-func parseStsz(p []byte) []int64 {
+// parseStsz reads the sample size table. The sample count is a 32-bit value
+// taken directly from the file, so allocations derived from it are bounded:
+// per-entry sizes must be present in the box payload, and a uniform table
+// still implies one byte of media data per sample, so its count cannot
+// exceed the input size. Without these caps, a tiny forged stsz box forces
+// a multi-gigabyte allocation.
+func parseStsz(p []byte, maxSamples int) []int64 {
 	if len(p) < 12 {
 		return nil
 	}
 
 	uniform := binary.BigEndian.Uint32(p[4:8])
 	n := int(binary.BigEndian.Uint32(p[8:12]))
+
+	if uniform != 0 {
+		if n > maxSamples {
+			n = maxSamples
+		}
+	} else if n > (len(p)-12)/4 {
+		n = (len(p) - 12) / 4
+	}
 
 	out := make([]int64, n)
 	if uniform != 0 {
@@ -260,6 +274,11 @@ func parseOffsets(p []byte, sz int) []int64 {
 	}
 
 	n := int(binary.BigEndian.Uint32(p[4:8]))
+	if n > (len(p)-8)/sz {
+		// Chunk offsets must be present in the box payload.
+		n = (len(p) - 8) / sz
+	}
+
 	out := make([]int64, 0, n)
 	off := 8
 	for i := 0; i < n; i++ {
@@ -284,6 +303,11 @@ func parseStsc(p []byte) []int {
 	}
 
 	n := int(binary.BigEndian.Uint32(p[4:8]))
+	if n > (len(p)-8)/12 {
+		// Entries must be present in the box payload.
+		n = (len(p) - 8) / 12
+	}
+
 	out := make([]int, 0, n*2)
 	off := 8
 	for i := 0; i < n; i++ {
@@ -299,12 +323,20 @@ func parseStsc(p []byte) []int {
 	return out
 }
 
-func parseStts(p []byte) []uint32 {
+// parseStts reads the sample-to-decode-time deltas. The entry count is
+// bounded by the box payload and the expanded total (sum of per-entry
+// counts) by the input size, so a forged entry count cannot expand into a
+// huge slice.
+func parseStts(p []byte, maxSamples int) []uint32 {
 	if len(p) < 8 {
 		return nil
 	}
 
 	n := int(binary.BigEndian.Uint32(p[4:8]))
+	if n > (len(p)-8)/8 {
+		n = (len(p) - 8) / 8
+	}
+
 	var out []uint32
 	off := 8
 	for i := 0; i < n; i++ {
@@ -313,7 +345,7 @@ func parseStts(p []byte) []uint32 {
 		}
 		cnt := binary.BigEndian.Uint32(p[off : off+4])
 		delta := binary.BigEndian.Uint32(p[off+4 : off+8])
-		for c := uint32(0); c < cnt; c++ {
+		for c := uint32(0); c < cnt && len(out) < maxSamples; c++ {
 			out = append(out, delta)
 		}
 		off += 8
