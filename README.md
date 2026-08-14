@@ -8,6 +8,8 @@ Based on the Rust [heic](https://crates.io/crates/heic) decoder compiled to [WAS
 
 The library will first try to use a [libheif](https://github.com/strukturag/libheif) dynamic/shared library (if installed) via [purego](https://github.com/ebitengine/purego) and will fall back to the embedded WASM.
 
+For a pure Go alternative, see [h265](https://github.com/gen2brain/h265), a HEVC and HEIC decoder with SIMD support, no CGo/WASM and no dependencies.
+
 ### Build tags
 
 * `nodynamic` - do not use dynamic/shared library (use only WASM)
