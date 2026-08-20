@@ -104,6 +104,7 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	if e.Code != 0 {
 		return nil, cfg, ErrDecode
 	}
+	defer heifImageRelease(heifImg)
 
 	var img image.Image
 	rect := image.Rect(0, 0, cfg.Width, cfg.Height)
