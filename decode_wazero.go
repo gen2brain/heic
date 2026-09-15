@@ -11,6 +11,7 @@ import (
 	"image"
 	"image/color"
 	"io"
+	"runtime"
 	"sync"
 
 	"github.com/tetratelabs/wazero"
@@ -38,13 +39,17 @@ func newModule() *module {
 		panic(err)
 	}
 
-	return &module{
+	m := &module{
 		mod:       mod,
 		alloc:     mod.ExportedFunction("malloc"),
 		free:      mod.ExportedFunction("free"),
 		decode:    mod.ExportedFunction("decode"),
 		decodeSeq: mod.ExportedFunction("decode_sequence"),
 	}
+
+	runtime.AddCleanup(m, func(inst api.Module) { inst.Close(context.Background()) }, mod)
+
+	return m
 }
 
 func decodeSequence(annexb []byte) ([][]byte, int, int, error) {

@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 )
 
 //go:embed testdata/test.heic
@@ -270,6 +271,44 @@ func TestDecodeSync(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestDecodeMemory(t *testing.T) {
+	heap := func() uint64 {
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		return m.HeapAlloc
+	}
+
+	decodeAfterGC := func() {
+		runtime.GC()
+		if _, _, err := decode(bytes.NewReader(testHeic), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	decodeAfterGC()
+	runtime.GC()
+	runtime.GC()
+	first := heap()
+
+	for range 10 {
+		decodeAfterGC()
+	}
+
+	limit := first + 64<<20
+	var n uint64
+	for range 40 {
+		runtime.GC()
+		if n = heap(); n <= limit {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if n > limit {
+		t.Fatalf("heap %d MB after 11 decodes, %d MB after one", n>>20, first>>20)
+	}
 }
 
 func TestDecodeSyncDynamic(t *testing.T) {

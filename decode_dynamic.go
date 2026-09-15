@@ -104,6 +104,7 @@ func decodeDynamic(r io.Reader, configOnly bool) (image.Image, image.Config, err
 	if e.Code != 0 {
 		return nil, cfg, ErrDecode
 	}
+	defer heifImageRelease(heifImg)
 
 	var img image.Image
 	rect := image.Rect(0, 0, cfg.Width, cfg.Height)
@@ -233,6 +234,7 @@ func init() {
 	purego.RegisterLibFunc(&_heifDecodingOptionsFree, libheif, "heif_decoding_options_free")
 	purego.RegisterLibFunc(&_heifDecodeImage, libheif, "heif_decode_image")
 	purego.RegisterLibFunc(&_heifImageGetPlaneReadonly, libheif, "heif_image_get_plane_readonly")
+	purego.RegisterLibFunc(&_heifImageRelease, libheif, "heif_image_release")
 
 	if versionMajor == 1 && versionMinor >= 19 {
 		registerSequence()
@@ -256,7 +258,6 @@ func registerSequence() {
 	purego.RegisterLibFunc(&_heifImageGetDuration, libheif, "heif_image_get_duration")
 	purego.RegisterLibFunc(&_heifImageGetPrimaryWidth, libheif, "heif_image_get_primary_width")
 	purego.RegisterLibFunc(&_heifImageGetPrimaryHeight, libheif, "heif_image_get_primary_height")
-	purego.RegisterLibFunc(&_heifImageRelease, libheif, "heif_image_release")
 
 	hasSequence = true
 }
